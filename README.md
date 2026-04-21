@@ -98,6 +98,23 @@ VITE_GOOGLE_DRIVE_CLIENT_SECRET=your-client-secret
 VITE_GOOGLE_DRIVE_REDIRECT_URI=http://localhost:5173/
 ```
 
+#### 🔑 如何获取密钥
+
+**Supabase 密钥获取：**
+1. 访问 [supabase.com](https://supabase.com/) 注册账号
+2. 创建新项目，进入 **Settings → API**
+3. 复制 `Project URL` → `VITE_SUPABASE_URL`
+4. 复制 `anon public` key → `VITE_SUPABASE_ANON_KEY`
+
+**Google Drive OAuth 密钥获取：**
+1. 访问 [Google Cloud Console](https://console.cloud.google.com/)
+2. 创建或选择项目 → 启用 **Google Drive API**
+3. 进入 **APIs & Services → OAuth consent screen**，配置应用信息
+4. 进入 **Credentials → Create Credentials → OAuth client ID**
+5. 选择 **Web application**，添加授权回调地址
+6. 复制 `Client ID` → `VITE_GOOGLE_DRIVE_CLIENT_ID`
+7. 复制 `Client Secret` → `VITE_GOOGLE_DRIVE_CLIENT_SECRET`
+
 ### 构建生产版本
 
 ```bash

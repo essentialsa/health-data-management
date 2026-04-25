@@ -2,7 +2,7 @@
  * 体检报告解析服务 — 调用本地后端 PaddleOCR 解析 API
  */
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_REPORT_PARSER_URL || 'https://g1042547058-leo.hf.space';
 
 /* ── 类型定义 ── */
 

@@ -11,22 +11,16 @@ from parser.date_extractor import extract_report_date
 
 app = FastAPI(title="Medical Report Parser", version="1.0.0")
 
-# CORS - 仅允许授权域名
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,https://health-data-mgmt.vercel.app"
-).split(",")
-
+# CORS - 允许前端本地访问
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origins=["*"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 初始化引擎（默认使用真实 PaddleOCR，HF Spaces 部署时设置为 false）
-USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
+# 初始化引擎（默认 mock 模式）
+USE_MOCK = os.getenv("USE_MOCK", "true").lower() == "true"
 engine = PaddleEngine(use_mock=USE_MOCK)
 
 
@@ -67,6 +61,7 @@ async def health_check():
 @app.post("/api/parse", response_model=ParseResponse)
 async def parse_report(file: UploadFile = File(...)):
     """解析体检报告 PDF/图片"""
+    # 验证文件类型
     allowed_types = [
         "application/pdf",
         "image/jpeg",
@@ -91,4 +86,4 @@ async def parse_report(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

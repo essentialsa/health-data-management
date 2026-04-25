@@ -29,3 +29,4 @@ playwright-report/
 test-results/
 screenshots/
 *.xlsx
+.vercel

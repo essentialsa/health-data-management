@@ -5,6 +5,7 @@ import { RecordChart } from "@/app/components/RecordChart";
 import { ImportRecordsDialog } from "@/app/components/ImportRecordsDialog";
 import { MedicalReportImportDialog } from "@/app/components/MedicalReportImportDialog";
 import { ExportDialog } from "@/app/components/ExportDialog";
+import { ConsultationBriefDialog } from "@/app/components/ConsultationBriefDialog";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
@@ -57,6 +58,7 @@ import {
   CloudDownload,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table";
+import { cn } from "@/app/components/ui/utils";
 import * as XLSX from "xlsx";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -531,6 +533,7 @@ interface IndicatorMaintenanceDialogProps {
   usedIndicatorIds: Set<string>;
   indicatorChangeLogs: IndicatorChangeLogEntry[];
   onChangeIndicatorLogs: (logs: IndicatorChangeLogEntry[]) => void;
+  triggerClassName?: string;
 }
 
 function IndicatorMaintenanceDialog({
@@ -539,6 +542,7 @@ function IndicatorMaintenanceDialog({
   usedIndicatorIds,
   indicatorChangeLogs,
   onChangeIndicatorLogs,
+  triggerClassName,
 }: IndicatorMaintenanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -789,7 +793,12 @@ function IndicatorMaintenanceDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button className="w-40 gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300">
+        <Button
+          className={cn(
+            "gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300",
+            triggerClassName,
+          )}
+        >
           <Settings2 className="w-4 h-4" />
           检验指标维护
         </Button>
@@ -1284,16 +1293,20 @@ function IndicatorMaintenanceDialog({
 interface ClearAllDataDialogProps {
   disabled: boolean;
   onConfirm: () => void;
+  triggerClassName?: string;
 }
 
-function ClearAllDataDialog({ disabled, onConfirm }: ClearAllDataDialogProps) {
+function ClearAllDataDialog({ disabled, onConfirm, triggerClassName }: ClearAllDataDialogProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button
           variant="outline"
           disabled={disabled}
-          className="gap-2 bg-white/80 backdrop-blur-sm border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          className={cn(
+            "gap-2 bg-white/80 backdrop-blur-sm border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 disabled:opacity-40 disabled:cursor-not-allowed",
+            triggerClassName,
+          )}
         >
           <Trash2 className="w-4 h-4" />
           删除全部
@@ -1447,7 +1460,7 @@ function UserMenu({ email, onConfirm, onSetPassword }: UserMenuProps) {
         </Dialog>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <DropdownMenuItem className="text-rose-600 focus:text-rose-700 focus:bg-rose-50">
+            <DropdownMenuItem className="text-rose-600 focus:text-rose-700 focus:bg-rose-50" onSelect={(e) => e.preventDefault()}>
               退出登录
             </DropdownMenuItem>
           </AlertDialogTrigger>
@@ -1955,6 +1968,7 @@ interface CloudSyncDialogProps {
   onUpdateAuthConfig: (config: CloudAuthConfig) => void;
   onPullFromCloud: () => void;
   cloudPulling: boolean;
+  triggerClassName?: string;
 }
 
 function CloudSyncDialog({
@@ -1968,6 +1982,7 @@ function CloudSyncDialog({
   onUpdateAuthConfig,
   onPullFromCloud,
   cloudPulling,
+  triggerClassName,
 }: CloudSyncDialogProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
@@ -2222,7 +2237,10 @@ function CloudSyncDialog({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="gap-2 bg-white/80 backdrop-blur-sm border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
+          className={cn(
+            "gap-2 bg-white/80 backdrop-blur-sm border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300",
+            triggerClassName,
+          )}
         >
           <Cloud className="w-4 h-4" />
           云同步
@@ -4762,6 +4780,8 @@ export default function App() {
     }
   }
 
+  const actionTriggerClassName = "h-10 min-w-[132px] px-4 justify-center whitespace-nowrap text-sm";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -4792,23 +4812,48 @@ export default function App() {
           
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div className="flex flex-wrap gap-3 items-center">
-              <AddRecordDialog onAddRecord={handleAddRecord} indicatorCategories={indicatorCategories} />
+              <AddRecordDialog
+                onAddRecord={handleAddRecord}
+                indicatorCategories={indicatorCategories}
+                triggerClassName={actionTriggerClassName}
+              />
               <IndicatorMaintenanceDialog
                 categories={indicatorCategories}
                 onChangeCategories={setIndicatorCategories}
                 usedIndicatorIds={new Set(records.map(r => r.indicatorType))}
                 indicatorChangeLogs={indicatorChangeLogs}
                 onChangeIndicatorLogs={setIndicatorChangeLogs}
+                triggerClassName={actionTriggerClassName}
               />
               <MedicalReportImportDialog
                 onImportRecords={handleImportRecords}
+                existingCategories={indicatorCategories.map(category => ({
+                  id: category.id,
+                  name: category.name,
+                  items: category.items.map(item => ({ id: item.id, label: item.label })),
+                }))}
+                triggerClassName={actionTriggerClassName}
               />
               <ImportRecordsDialog
                 categories={indicatorCategories}
                 onImportRecords={handleImportRecords}
+                triggerClassName={actionTriggerClassName}
               />
-              <ExportDialog categories={indicatorCategories} onExport={handleExport} />
-              <ClearAllDataDialog disabled={records.length === 0} onConfirm={handleClearAllRecords} />
+              <ConsultationBriefDialog
+                categories={indicatorCategories}
+                records={records}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ExportDialog
+                categories={indicatorCategories}
+                onExport={handleExport}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ClearAllDataDialog
+                disabled={records.length === 0}
+                onConfirm={handleClearAllRecords}
+                triggerClassName={actionTriggerClassName}
+              />
               <CloudSyncDialog
                 provider={cloudProvider}
                 autoSync={cloudAutoSync}
@@ -4820,12 +4865,16 @@ export default function App() {
                 onUpdateAuthConfig={handleUpdateAuthConfig}
                 onPullFromCloud={handleCloudPull}
                 cloudPulling={cloudPulling}
+                triggerClassName={actionTriggerClassName}
               />
               <Button
                 variant="outline"
                 disabled={manualSyncing}
                 onClick={handleManualSync}
-                className="gap-2 bg-white/80 backdrop-blur-sm border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                className={cn(
+                  "gap-2 bg-white/80 backdrop-blur-sm border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed",
+                  actionTriggerClassName,
+                )}
               >
                 {manualSyncing ? (
                   <>

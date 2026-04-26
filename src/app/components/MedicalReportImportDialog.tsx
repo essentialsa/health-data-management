@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/app/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/app/components/ui/badge";
 import { Progress } from "@/app/components/ui/progress";
 import { Input } from "@/app/components/ui/input";
+import { cn } from "@/app/components/ui/utils";
 import { UploadCloud, FileText, AlertCircle, CheckCircle, Loader2, X, RefreshCw } from "lucide-react";
 import type { HealthRecord } from "@/app/components/AddRecordDialog";
 import {
@@ -16,6 +17,7 @@ import {
   groupByAction,
   getCategoriesToCreate,
   type ParseResult,
+  type ParserServiceStatus,
   type ResolvedIndicator,
 } from "@/app/services/medicalReport";
 import { CategorySelectDialog } from "./CategorySelectDialog";
@@ -26,9 +28,10 @@ const MAX_SIZE = 50 * 1024 * 1024;
 interface Props {
   onImportRecords: (records: HealthRecord[]) => void;
   existingCategories?: { id: string; name: string; items: { id: string; label: string }[] }[];
+  triggerClassName?: string;
 }
 
-export function MedicalReportImportDialog({ onImportRecords, existingCategories = [] }: Props) {
+export function MedicalReportImportDialog({ onImportRecords, existingCategories = [], triggerClassName }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"upload" | "preview">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -39,14 +42,28 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
   const [matched, setMatched] = useState<ResolvedIndicator[]>([]);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [pendingCategories, setPendingCategories] = useState<{ categoryId: string; categoryName: string; indicators: ResolvedIndicator[] }[]>([]);
-  const [serviceOnline, setServiceOnline] = useState<boolean | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<ParserServiceStatus | null>(null);
+  const [serviceChecking, setServiceChecking] = useState(false);
   const [filter, setFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const serviceOnline = serviceStatus?.online ?? null;
 
   const checkService = useCallback(async () => {
-    const ok = await checkParserService();
-    setServiceOnline(ok);
-    return ok;
+    setServiceChecking(true);
+    try {
+      const status = await checkParserService();
+      setServiceStatus(status);
+      return status;
+    } finally {
+      setServiceChecking(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    void checkService();
+  }, [open, checkService]);
 
   const handleFile = async (f: File) => {
     if (!ALLOWED.includes(f.type)) { setError("仅支持 PDF、JPG、PNG 格式"); return; }
@@ -57,6 +74,11 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
   const handleParse = async () => {
     if (!file) return;
+    const latestStatus = await checkService();
+    if (!latestStatus.online) {
+      setError(latestStatus.message || "解析服务未就绪，请先启动 OCR 服务");
+      return;
+    }
     setParsing(true);
     setProgress(0);
     setTab("preview");
@@ -66,7 +88,10 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
     try {
       const r = await parseMedicalReport(file);
-      const extracted = extractIndicatorsFromTables(r.tables);
+      const extracted =
+        Array.isArray(r.indicators) && r.indicators.length > 0
+          ? r.indicators
+          : extractIndicatorsFromTables(r.tables);
       const resolved = resolveIndicators(extracted, existingCategories);
       const grouped = groupByAction(resolved);
       setMatched(resolved);
@@ -124,6 +149,8 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
     setProgress(0);
     setPendingCategories([]);
     setCategoryDialogOpen(false);
+    setServiceStatus(null);
+    setServiceChecking(false);
   };
 
   const handleCategoryConfirm = (actions: { groupId: string; action: "create" | "assign" | "skip"; categoryId?: string; customName?: string }[]) => {
@@ -154,7 +181,12 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
       />
       <Dialog open={open} onOpenChange={o => { if (!o) handleClose(); else setOpen(true); }}>
       <DialogTrigger asChild>
-        <Button className="w-40 gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300">
+        <Button
+          className={cn(
+            "gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300",
+            triggerClassName,
+          )}
+        >
           <FileText className="w-4 h-4" />
           报告导入
         </Button>
@@ -169,14 +201,26 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
         {/* 服务状态 */}
         <div className="flex items-center gap-2 text-sm">
-          {serviceOnline === true && (
-            <span className="flex items-center gap-1 text-green-600"><CheckCircle className="w-3.5 h-3.5" /> 解析服务就绪</span>
-          )}
-          {serviceOnline === false && (
-            <span className="flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5" /> 解析服务未启动 <button className="underline ml-1" onClick={() => checkService()}>刷新</button></span>
-          )}
-          {serviceOnline === null && (
+          {serviceChecking && (
             <span className="flex items-center gap-1 text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" /> 检测中...</span>
+          )}
+          {!serviceChecking && serviceOnline === true && (
+            <span className="flex items-center gap-1 text-green-600">
+              <CheckCircle className="w-3.5 h-3.5" />
+              解析服务就绪（{serviceStatus?.endpoint || "已连接"}）
+            </span>
+          )}
+          {!serviceChecking && serviceOnline === false && (
+            <span className="flex items-center gap-1 text-red-600">
+              <AlertCircle className="w-3.5 h-3.5" />
+              解析服务未启动
+              <button className="underline ml-1" onClick={() => void checkService()}>
+                刷新
+              </button>
+              {serviceStatus?.message ? (
+                <span className="text-xs text-muted-foreground ml-1 max-w-[560px] truncate">{serviceStatus.message}</span>
+              ) : null}
+            </span>
           )}
         </div>
 
@@ -218,7 +262,7 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>取消</Button>
-              <Button disabled={!file || serviceOnline === false} onClick={handleParse}>
+              <Button disabled={!file || serviceChecking || serviceOnline === false} onClick={handleParse}>
                 {parsing ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> 解析中...</> : "开始解析"}
               </Button>
             </div>

@@ -5,27 +5,40 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 
-from parser.paddle_engine import PaddleEngine
+from parser.paddle_engine import PaddleEngine, PADDLE_AVAILABLE
 from parser.table_extractor import extract_table_structure
 from parser.date_extractor import extract_report_date
 
 app = FastAPI(title="Medical Report Parser", version="1.0.0")
 
-# CORS - 仅允许授权域名
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,https://health-data-mgmt.vercel.app"
-).split(",")
+# CORS - 默认允许本地开发 + 已部署前端域名。
+# 若需要允许任意来源可设置 ALLOWED_ORIGINS=*（此时会自动关闭 credentials）。
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://health-data-mgmt.vercel.app",
+    ).split(",")
+    if origin.strip()
+]
+ALLOW_ALL_ORIGINS = "*" in ALLOWED_ORIGINS
+ALLOW_CREDENTIALS = os.getenv(
+    "CORS_ALLOW_CREDENTIALS",
+    "false" if ALLOW_ALL_ORIGINS else "true",
+).lower() == "true"
+
+if ALLOW_ALL_ORIGINS and ALLOW_CREDENTIALS:
+    ALLOW_CREDENTIALS = False
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"] if ALLOW_ALL_ORIGINS else ALLOWED_ORIGINS,
+    allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# 初始化引擎（默认使用真实 PaddleOCR，HF Spaces 部署时设置为 false）
+# 初始化引擎（默认使用真实 PaddleOCR）
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 engine = PaddleEngine(use_mock=USE_MOCK)
 
@@ -57,11 +70,23 @@ class ParseResponse(BaseModel):
     tables: List[ParsedTable]
     indicators: List[ExtractedIndicator]
     markdown: str
+    error: Optional[str] = None
 
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "model": "PaddleOCR-VL-1.5", "mock_mode": USE_MOCK}
+    ocr_ready = USE_MOCK or PADDLE_AVAILABLE
+    if not ocr_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="OCR 引擎未就绪：当前环境未安装 PaddleOCR，请安装 paddlepaddle/paddleocr 或设置 USE_MOCK=true",
+        )
+    return {
+        "status": "ok",
+        "model": "PaddleOCR",
+        "mock_mode": USE_MOCK,
+        "ocr_ready": ocr_ready,
+    }
 
 
 @app.post("/api/parse", response_model=ParseResponse)
@@ -73,8 +98,12 @@ async def parse_report(file: UploadFile = File(...)):
         "image/png",
         "image/jpg",
     ]
-    
-    if file.content_type not in allowed_types and not file.filename:
+
+    filename = (file.filename or "").lower()
+    content_type = (file.content_type or "").lower()
+    allowed_ext = (".pdf", ".jpg", ".jpeg", ".png")
+    # 优先按 content-type 判断；若浏览器/客户端未正确传递，则退回扩展名兜底。
+    if content_type not in allowed_types and not filename.endswith(allowed_ext):
         raise HTTPException(status_code=400, detail="不支持的文件类型")
     
     content = await file.read()

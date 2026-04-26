@@ -3,15 +3,17 @@ import { Button } from "@/app/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/app/components/ui/dialog";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Label } from "@/app/components/ui/label";
+import { cn } from "@/app/components/ui/utils";
 import type { IndicatorCategory } from "@/app/components/AddRecordDialog";
 import { Download } from "lucide-react";
 
 interface ExportDialogProps {
   categories: IndicatorCategory[];
   onExport: (indicatorIds: string[] | null, format: "xlsx" | "csv", onProgress?: (value: number) => void) => void;
+  triggerClassName?: string;
 }
 
-export function ExportDialog({ categories, onExport }: ExportDialogProps) {
+export function ExportDialog({ categories, onExport, triggerClassName }: ExportDialogProps) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const allCategoryIds = categories.map(c => c.id);
@@ -97,7 +99,10 @@ export function ExportDialog({ categories, onExport }: ExportDialogProps) {
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="gap-2 bg-white/80 backdrop-blur-sm border-violet-200 hover:bg-violet-50 hover:border-violet-300"
+          className={cn(
+            "gap-2 bg-white/80 backdrop-blur-sm border-violet-200 hover:bg-violet-50 hover:border-violet-300",
+            triggerClassName,
+          )}
         >
           <Download className="w-4 h-4" />
           导出Excel

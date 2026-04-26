@@ -5,6 +5,7 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { cn } from "@/app/components/ui/utils";
 import { Plus } from "lucide-react";
 
 export interface IndicatorItem {
@@ -39,9 +40,10 @@ export interface HealthRecord {
 interface AddRecordDialogProps {
   onAddRecord: (record: HealthRecord) => void;
   indicatorCategories: IndicatorCategory[];
+  triggerClassName?: string;
 }
 
-export function AddRecordDialog({ onAddRecord, indicatorCategories }: AddRecordDialogProps) {
+export function AddRecordDialog({ onAddRecord, indicatorCategories, triggerClassName }: AddRecordDialogProps) {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -97,7 +99,12 @@ export function AddRecordDialog({ onAddRecord, indicatorCategories }: AddRecordD
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300">
+        <Button
+          className={cn(
+            "gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300",
+            triggerClassName,
+          )}
+        >
           <Plus className="w-4 h-4" />
           添加检验记录
         </Button>

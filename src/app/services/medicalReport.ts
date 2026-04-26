@@ -2,7 +2,108 @@
  * 体检报告解析服务 — 调用本地后端 PaddleOCR 解析 API
  */
 
-const API_BASE = import.meta.env.VITE_REPORT_PARSER_URL || 'https://g1042547058-leo.hf.space';
+const DEFAULT_PARSER_ENDPOINTS = [
+  "https://essentialsa-health-data-ocr.onrender.com",
+  "http://127.0.0.1:8000",
+  "http://localhost:8000",
+];
+
+const normalizeParserEndpoint = (value: string): string | null => {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const url = new URL(trimmed);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+};
+
+const collectParserEndpoints = (): string[] => {
+  const envList = (import.meta.env.VITE_REPORT_PARSER_URLS || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+  const single = (import.meta.env.VITE_REPORT_PARSER_URL || "").trim();
+  const configured = [...envList, ...(single ? [single] : [])];
+  const merged = configured.length > 0 ? [...configured, ...DEFAULT_PARSER_ENDPOINTS] : DEFAULT_PARSER_ENDPOINTS;
+  const deduped: string[] = [];
+  for (const endpoint of merged) {
+    const normalized = normalizeParserEndpoint(endpoint);
+    if (!normalized || deduped.includes(normalized)) {
+      continue;
+    }
+    deduped.push(normalized);
+  }
+  return deduped;
+};
+
+const PARSER_ENDPOINTS = collectParserEndpoints();
+
+type EndpointAttemptError = {
+  endpoint: string;
+  status?: number;
+  message: string;
+};
+
+const createTimeoutError = () => new DOMException("请求超时", "AbortError");
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(createTimeoutError());
+  }, timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const readErrorMessage = async (resp: Response): Promise<string> => {
+  const text = await resp.text();
+  if (!text) {
+    return `HTTP ${resp.status}`;
+  }
+  try {
+    const payload = JSON.parse(text) as { detail?: string; message?: string };
+    return payload.detail || payload.message || text;
+  } catch {
+    return text;
+  }
+};
+
+const isRetryableStatus = (status: number): boolean => {
+  if (status === 511) {
+    return true;
+  }
+  if (status === 408 || status === 425 || status === 429) {
+    return true;
+  }
+  return status >= 500;
+};
+
+const summarizeAttemptErrors = (errors: EndpointAttemptError[]): string => {
+  if (errors.length === 0) {
+    return "OCR 服务不可用，请检查服务状态。";
+  }
+  const details = errors.map(err => {
+    const statusPart = typeof err.status === "number" ? ` (${err.status})` : "";
+    return `${err.endpoint}${statusPart}：${err.message}`;
+  });
+  return `OCR 服务连接失败，已尝试：${details.join("；")}`;
+};
+
+const createUploadFormData = (file: File): FormData => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return formData;
+};
 
 /* ── 类型定义 ── */
 
@@ -35,6 +136,13 @@ export interface ParseResult {
   markdown: string;
 }
 
+export interface ParserServiceStatus {
+  online: boolean;
+  endpoint?: string;
+  message?: string;
+  tried: string[];
+}
+
 export interface MatchedIndicator extends ExtractedIndicator {
   systemId?: string;
   systemLabel?: string;
@@ -47,20 +155,66 @@ export interface MatchedIndicator extends ExtractedIndicator {
 /* ── API 调用 ── */
 
 export async function parseMedicalReport(file: File): Promise<ParseResult> {
-  const formData = new FormData();
-  formData.append('file', file);
+  const errors: EndpointAttemptError[] = [];
 
-  const resp = await fetch(`${API_BASE}/api/parse`, { method: 'POST', body: formData });
-  if (!resp.ok) throw new Error(`解析失败 (${resp.status})`);
-  return resp.json();
+  for (const endpoint of PARSER_ENDPOINTS) {
+    try {
+      const resp = await fetchWithTimeout(
+        `${endpoint}/api/parse`,
+        { method: "POST", body: createUploadFormData(file) },
+        45000,
+      );
+
+      if (resp.ok) {
+        const payload = (await resp.json()) as ParseResult & { error?: string };
+        if (!payload.success) {
+          const message = payload.error || "OCR 解析失败";
+          errors.push({ endpoint, message });
+          continue;
+        }
+        return payload;
+      }
+
+      const message = await readErrorMessage(resp);
+      errors.push({ endpoint, status: resp.status, message });
+
+      if (!isRetryableStatus(resp.status)) {
+        throw new Error(`解析失败 (${resp.status})：${message}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "网络请求失败";
+      errors.push({ endpoint, message });
+    }
+  }
+
+  throw new Error(summarizeAttemptErrors(errors));
 }
 
-export async function checkParserService(): Promise<boolean> {
-  try {
-    const resp = await fetch(`${API_BASE}/api/health`);
-    return resp.ok;
-  } catch {
-    return false;
+export async function checkParserService(): Promise<ParserServiceStatus> {
+  const errors: EndpointAttemptError[] = [];
+  for (const endpoint of PARSER_ENDPOINTS) {
+    try {
+      const resp = await fetchWithTimeout(`${endpoint}/api/health`, { method: "GET" }, 3000);
+      if (resp.ok) {
+        return {
+          online: true,
+          endpoint,
+          tried: PARSER_ENDPOINTS,
+        };
+      }
+      const message = await readErrorMessage(resp);
+      errors.push({ endpoint, status: resp.status, message });
+    } catch (error) {
+      errors.push({
+        endpoint,
+        message: error instanceof Error ? error.message : "网络请求失败",
+      });
+    }
+  }
+  return {
+    online: false,
+    message: summarizeAttemptErrors(errors),
+    tried: PARSER_ENDPOINTS,
   }
 }
 
@@ -257,51 +411,71 @@ export function resolveIndicators(
   mappings: IndicatorMapping[] = DEFAULT_MAPPINGS
 ): ResolvedIndicator[] {
   return extracted.map(ind => {
+    // 第一步：先检查用户已有的指标分类和指标项（用户分类优先）
+    for (const cat of userCategories) {
+      for (const item of cat.items) {
+        // 用户指标项名称与提取的指标名称完全匹配
+        if (item.label === ind.rawLabel.trim() || item.id === ind.rawLabel.trim()) {
+          return {
+            ...ind,
+            systemId: item.id,
+            systemLabel: item.label,
+            categoryId: cat.id,
+            matchType: 'exact' as const,
+            confidence: { level: 'high' as const, score: 1.0, reasons: ['用户已有指标'] },
+            userItemFound: true,
+            userItemId: item.id,
+            userCategoryId: cat.id,
+            action: 'import' as const,
+          };
+        }
+      }
+    }
+
+    // 第二步：用户没有该指标，用词典做候选匹配，给出新建分类建议
     const match = matchIndicator(ind.rawLabel, mappings);
     const confidence = calcConfidence(match, ind.value);
 
-    const resolved: ResolvedIndicator = {
-      ...ind,
-      systemId: match.systemId,
-      systemLabel: match.systemLabel,
-      categoryId: match.categoryId,
-      matchType: match.matchType,
-      similarity: match.similarity,
-      confidence,
-      userItemFound: false,
-      action: 'unnamed',
-    };
-
-    // 已匹配：查找用户是否已有对应指标
     if (match.systemId) {
-      // 在用户现有分类中查找相同 label 的指标项
-      for (const cat of userCategories) {
-        for (const item of cat.items) {
-          if (item.label === match.systemLabel || item.id === match.systemId) {
-            resolved.userItemFound = true;
-            resolved.userItemId = item.id;
-            resolved.userCategoryId = cat.id;
-            resolved.action = 'import';
-            return resolved;
-          }
-        }
-      }
-      // 用户没有该指标项 → 需要创建
-      resolved.action = 'create_item';
-      // 查找用户是否有同名分类
+      // 词典匹配成功 → 建议创建新指标或归入已有分类
       const existingCat = userCategories.find(c => c.name === match.categoryId);
       if (existingCat) {
-        resolved.userCategoryId = existingCat.id;
-        resolved.action = 'create_item';
+        // 用户有同名分类 → 建议在该分类下创建新指标
+        return {
+          ...ind,
+          systemId: match.systemId,
+          systemLabel: match.systemLabel,
+          categoryId: existingCat.id,
+          matchType: match.matchType,
+          similarity: match.similarity,
+          confidence,
+          userItemFound: false,
+          action: 'create_item' as const,
+        };
       } else {
-        resolved.action = 'create_category';
+        // 用户没有该分类 → 建议创建新分类
+        return {
+          ...ind,
+          systemId: match.systemId,
+          systemLabel: match.systemLabel,
+          categoryId: match.categoryId,
+          matchType: match.matchType,
+          similarity: match.similarity,
+          confidence,
+          userItemFound: false,
+          action: 'create_category' as const,
+        };
       }
-    } else {
-      // 未匹配
-      resolved.action = 'unnamed';
     }
 
-    return resolved;
+    // 第三步：词典也没匹配 → 归入"未命名"，让用户选择
+    return {
+      ...ind,
+      matchType: 'none' as const,
+      confidence: { level: 'low' as const, score: 0, reasons: ['未匹配'] },
+      userItemFound: false,
+      action: 'unnamed' as const,
+    };
   });
 }
 

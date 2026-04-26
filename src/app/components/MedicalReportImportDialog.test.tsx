@@ -42,7 +42,11 @@ const mockImportRecords = vi.fn();
 
 describe("MedicalReportImportDialog E2E", () => {
   beforeEach(() => {
-    vi.mocked(medicalReport.checkParserService).mockResolvedValue(true);
+    vi.mocked(medicalReport.checkParserService).mockResolvedValue({
+      online: true,
+      endpoint: "http://127.0.0.1:8000",
+      tried: ["http://127.0.0.1:8000"],
+    });
     vi.mocked(medicalReport.parseMedicalReport).mockResolvedValue(mockParseResult);
     vi.mocked(medicalReport.extractIndicatorsFromTables).mockReturnValue(mockParseResult.indicators);
     vi.mocked(medicalReport.resolveIndicators).mockReturnValue(mockMatched);
@@ -55,19 +59,19 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("渲染导入按钮", () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    expect(screen.getByText("体检报告导入")).toBeInTheDocument();
+    expect(screen.getByText("报告导入")).toBeInTheDocument();
   });
 
   it("点击按钮打开对话框", () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
     expect(screen.getByText("上传文件")).toBeInTheDocument();
     expect(screen.getByText("预览确认")).toBeInTheDocument();
   });
 
   it("选择有效文件后不显示错误", () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
     const file = new File(["dummy"], "report.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     Object.defineProperty(input, "files", { value: [file], writable: false });
@@ -78,7 +82,7 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("拒绝不支持的文件类型", () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
     const file = new File(["dummy"], "report.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     Object.defineProperty(input, "files", { value: [file], writable: false });
@@ -88,7 +92,7 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("拒绝超大文件", () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
     const file = new File(["x".repeat(51 * 1024 * 1024)], "large.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     Object.defineProperty(input, "files", { value: [file], writable: false });
@@ -98,7 +102,7 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("解析完成后显示指标数据", async () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
 
     const file = new File(["dummy"], "report.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -116,7 +120,7 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("确认导入后调用 onImportRecords", async () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
 
     const file = new File(["dummy"], "report.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -139,7 +143,7 @@ describe("MedicalReportImportDialog E2E", () => {
   it("解析失败时显示错误", async () => {
     vi.mocked(medicalReport.parseMedicalReport).mockRejectedValue(new Error("网络错误"));
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
 
     const file = new File(["dummy"], "report.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -154,7 +158,7 @@ describe("MedicalReportImportDialog E2E", () => {
 
   it("关闭对话框后重新打开回到初始状态", async () => {
     render(<MedicalReportImportDialog onImportRecords={mockImportRecords} />);
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
 
     const file = new File(["dummy"], "report.pdf", { type: "application/pdf" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -162,7 +166,7 @@ describe("MedicalReportImportDialog E2E", () => {
     fireEvent.change(input);
 
     fireEvent.click(screen.getByText("取消"));
-    fireEvent.click(screen.getByText("体检报告导入"));
+    fireEvent.click(screen.getByText("报告导入"));
     expect(screen.getByText("上传文件")).toBeInTheDocument();
     expect(screen.queryByText("report.pdf")).not.toBeInTheDocument();
   });

@@ -6,6 +6,7 @@ import { Label } from "@/app/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table";
+import { cn } from "@/app/components/ui/utils";
 import { UploadCloud, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { HealthRecord, IndicatorCategory, IndicatorItem } from "@/app/components/AddRecordDialog";
@@ -31,9 +32,10 @@ interface ParsedRow {
 interface ImportRecordsDialogProps {
   categories: IndicatorCategory[];
   onImportRecords: (records: HealthRecord[]) => void;
+  triggerClassName?: string;
 }
 
-export function ImportRecordsDialog({ categories, onImportRecords }: ImportRecordsDialogProps) {
+export function ImportRecordsDialog({ categories, onImportRecords, triggerClassName }: ImportRecordsDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
@@ -482,7 +484,10 @@ export function ImportRecordsDialog({ categories, onImportRecords }: ImportRecor
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="gap-2 bg-white/80 backdrop-blur-sm border-violet-200 hover:bg-violet-50 hover:border-violet-300"
+          className={cn(
+            "gap-2 bg-white/80 backdrop-blur-sm border-violet-200 hover:bg-violet-50 hover:border-violet-300",
+            triggerClassName,
+          )}
         >
           <UploadCloud className="w-4 h-4" />
           Excel 导入

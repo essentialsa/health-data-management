@@ -96,6 +96,9 @@ VITE_SUPABASE_SYNC_TABLE=health_sync_snapshots
 VITE_GOOGLE_DRIVE_CLIENT_ID=your-client-id
 VITE_GOOGLE_DRIVE_CLIENT_SECRET=your-client-secret
 VITE_GOOGLE_DRIVE_REDIRECT_URI=http://localhost:5173/
+
+# OCR 解析服务（按顺序重试，建议：云端优先 + 本地兜底）
+VITE_REPORT_PARSER_URLS=https://essentialsa-health-data-ocr.onrender.com,http://127.0.0.1:8000
 ```
 
 #### 🔑 如何获取密钥
@@ -114,6 +117,12 @@ VITE_GOOGLE_DRIVE_REDIRECT_URI=http://localhost:5173/
 5. 选择 **Web application**，添加授权回调地址
 6. 复制 `Client ID` → `VITE_GOOGLE_DRIVE_CLIENT_ID`
 7. 复制 `Client Secret` → `VITE_GOOGLE_DRIVE_CLIENT_SECRET`
+
+**OCR 服务地址配置：**
+1. 仅本机使用：配置 `VITE_REPORT_PARSER_URLS=http://127.0.0.1:8000`
+2. 想在其他地方访问网页也能 OCR：把 `report-parser` 部署到 Render
+3. 当前 Render Blueprint 预设地址：`https://essentialsa-health-data-ocr.onrender.com`
+4. 推荐配置：`公网地址,本地地址`，例如 `https://essentialsa-health-data-ocr.onrender.com,http://127.0.0.1:8000`
 
 ### 构建生产版本
 

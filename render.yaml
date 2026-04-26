@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: essentialsa-health-data-ocr
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./report-parser/Dockerfile
+    dockerContext: ./report-parser
+    healthCheckPath: /api/health
+    envVars:
+      - key: USE_MOCK
+        value: "false"
+      - key: ALLOWED_ORIGINS
+        value: https://health-data-mgmt.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+      - key: CORS_ALLOW_CREDENTIALS
+        value: "true"

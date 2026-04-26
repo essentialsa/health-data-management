@@ -1,44 +1,76 @@
 # 体检报告解析服务
 
-基于 FastAPI + PaddleOCR-VL-1.5 的本地体检报告解析服务。
+基于 FastAPI + PaddleOCR 的体检报告解析服务，支持 PDF/JPG/PNG。
 
 ## 快速开始
 
-### 方式一：Mock 模式（开发测试，无需安装 PaddleOCR）
+### 本地运行（推荐）
 ```bash
 cd report-parser
 pip install -r requirements.txt
-uvicorn main:app --host 127.0.0.1 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### 方式二：真实模式（需要 PaddleOCR）
+### Mock 模式（开发调试，无需 OCR 模型）
 ```bash
-pip install paddlepaddle paddleocr
-USE_MOCK=false uvicorn main:app --host 127.0.0.1 --port 8000
-```
-
-### 方式三：Docker
-```bash
-docker build -t report-parser .
-docker run -d -p 8000:8000 --name report-parser report-parser
+USE_MOCK=true uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 ## API
 
 ### 健康检查
-```
-GET /api/health
-```
+`GET /api/health`
 
 ### 解析报告
-```
-POST /api/parse
-Content-Type: multipart/form-data
+`POST /api/parse`（`multipart/form-data`，字段名 `file`）
 
-file: <PDF or image file>
+## CORS 配置（异地访问必看）
+
+默认允许：
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+- `https://health-data-mgmt.vercel.app`
+
+可通过环境变量覆盖：
+
+```bash
+# 多域名逗号分隔
+ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
+
+# 若要允许所有来源（调试用）
+ALLOWED_ORIGINS=*
+# ALLOWED_ORIGINS=* 时，服务会自动关闭 credentials
 ```
 
-## 性能
-- CPU 推理：约 2-5 秒/页
-- GPU 推理：约 <1 秒/页
-- Mock 模式：即时返回
+## 前端端点配置（云端优先 + 本地兜底）
+
+前端会按顺序尝试 `VITE_REPORT_PARSER_URLS` 中的地址，并自动回退。
+
+```bash
+VITE_REPORT_PARSER_URLS=https://essentialsa-health-data-ocr.onrender.com,http://127.0.0.1:8000
+```
+
+如果只想配置一个端点，也可使用：
+
+```bash
+VITE_REPORT_PARSER_URL=https://essentialsa-health-data-ocr.onrender.com
+```
+
+## Render 部署
+
+仓库根目录已提供 `render.yaml`，用于创建公网 OCR 服务：
+
+```text
+https://essentialsa-health-data-ocr.onrender.com
+```
+
+部署步骤：
+
+```text
+Render Dashboard -> New -> Blueprint -> Connect GitHub repo -> Deploy Blueprint
+```
+
+## 性能参考
+- CPU：约 2-5 秒/页
+- GPU：约 <1 秒/页
+- Mock：近实时返回

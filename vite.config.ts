@@ -5,11 +5,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        env: { development: { presets: [['@babel/preset-react', { runtime: 'automatic', development: true }]] } },
-      },
-    }),
+    react(),
     tailwindcss(),
   ],
   resolve: {

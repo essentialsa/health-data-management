@@ -7,7 +7,7 @@ services:
     branch: main
     dockerfilePath: ./report-parser/Dockerfile
     dockerContext: ./report-parser
-    healthCheckPath: /api/health
+    healthCheckPath: /api/healthz
     envVars:
       - key: USE_MOCK
         value: "false"

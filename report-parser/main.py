@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 
-from parser.paddle_engine import PaddleEngine, PADDLE_AVAILABLE
+from parser.paddle_engine import PaddleEngine, PADDLE_AVAILABLE, PADDLE_IMPORT_ERROR
 from parser.table_extractor import extract_table_structure
 from parser.date_extractor import extract_report_date
 
@@ -79,13 +79,25 @@ async def health_check():
     if not ocr_ready:
         raise HTTPException(
             status_code=503,
-            detail="OCR 引擎未就绪：当前环境未安装 PaddleOCR，请安装 paddlepaddle/paddleocr 或设置 USE_MOCK=true",
+            detail={
+                "message": "OCR 引擎未就绪：当前环境未安装 PaddleOCR，请安装 paddlepaddle/paddleocr 或设置 USE_MOCK=true",
+                "import_error": PADDLE_IMPORT_ERROR,
+            },
         )
     return {
         "status": "ok",
         "model": "PaddleOCR",
         "mock_mode": USE_MOCK,
         "ocr_ready": ocr_ready,
+    }
+
+
+@app.get("/api/healthz")
+async def service_health_check():
+    """Render 部署健康检查：只确认 Web 进程已启动。"""
+    return {
+        "status": "ok",
+        "ocr_ready": USE_MOCK or PADDLE_AVAILABLE,
     }
 
 

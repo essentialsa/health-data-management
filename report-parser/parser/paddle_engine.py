@@ -8,8 +8,10 @@ import numpy as np
 try:
     from paddleocr import PaddleOCR
     PADDLE_AVAILABLE = True
-except ImportError:
+    PADDLE_IMPORT_ERROR = None
+except Exception as exc:
     PADDLE_AVAILABLE = False
+    PADDLE_IMPORT_ERROR = repr(exc)
 
 try:
     import fitz

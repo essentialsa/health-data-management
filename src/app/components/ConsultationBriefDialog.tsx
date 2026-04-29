@@ -266,9 +266,8 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
     >
       <DialogTrigger asChild>
         <Button
-          variant="outline"
           className={cn(
-            "gap-2 bg-white/80 backdrop-blur-sm border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300",
+            "gap-2 bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 shadow-lg shadow-violet-200 hover:shadow-xl hover:shadow-violet-300 transition-all duration-300",
             triggerClassName,
           )}
         >

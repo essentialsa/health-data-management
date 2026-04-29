@@ -4780,7 +4780,7 @@ export default function App() {
     }
   }
 
-  const actionTriggerClassName = "h-10 min-w-[132px] px-4 justify-center whitespace-nowrap text-sm";
+  const actionTriggerClassName = "h-10 w-[136px] flex-none px-4 justify-center whitespace-nowrap text-sm";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">
@@ -4810,8 +4810,8 @@ export default function App() {
             )}
           </div>
           
-          <div className="flex flex-wrap gap-3 items-center justify-between">
-            <div className="flex flex-wrap gap-3 items-center">
+          <div className="w-full overflow-x-auto pb-2">
+            <div className="flex w-max min-w-full flex-nowrap items-center gap-3">
               <AddRecordDialog
                 onAddRecord={handleAddRecord}
                 indicatorCategories={indicatorCategories}

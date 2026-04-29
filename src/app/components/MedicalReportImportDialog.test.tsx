@@ -27,13 +27,13 @@ const mockParseResult = {
 };
 
 const mockMatched = [
-  { rawLabel: "收缩压", value: 120, unit: "mmHg", referenceRange: "90-140", pageIndex: 0, systemId: "blood_pressure_systolic", matchType: "exact" as const, confidence: { level: "high" as const, score: 1.0, reasons: [] }, action: "create_category" as const, userItemFound: false },
-  { rawLabel: "血糖", value: 5.2, unit: "mmol/L", referenceRange: "3.9-6.1", pageIndex: 0, systemId: "blood_glucose", matchType: "exact" as const, confidence: { level: "high" as const, score: 1.0, reasons: [] }, action: "create_category" as const, userItemFound: false },
+  { rawLabel: "收缩压", value: 120, unit: "mmHg", referenceRange: "90-140", pageIndex: 0, systemId: "blood_pressure_systolic", userItemId: "blood_pressure_systolic", matchType: "exact" as const, confidence: { level: "high" as const, score: 1.0, reasons: [] }, action: "import" as const, userItemFound: true },
+  { rawLabel: "血糖", value: 5.2, unit: "mmol/L", referenceRange: "3.9-6.1", pageIndex: 0, systemId: "blood_glucose", userItemId: "blood_glucose", matchType: "exact" as const, confidence: { level: "high" as const, score: 1.0, reasons: [] }, action: "import" as const, userItemFound: true },
 ];
 
 const mockGrouped = {
-  import: [],
-  createCategory: mockMatched,
+  import: mockMatched,
+  createCategory: [],
   createItem: [],
   unnamed: [],
 };

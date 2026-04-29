@@ -164,6 +164,35 @@ describe("resolveIndicators", () => {
     expect(result[0].userItemFound).toBe(true);
   });
 
+  it("英文缩写优先匹配用户已维护的中文指标", () => {
+    const userCats = [
+      {
+        id: "bloodSugar",
+        name: "血糖",
+        items: [{ id: "bloodSugar", label: "血糖", unit: "mmol/L" }],
+      },
+    ];
+    const extracted: ExtractedIndicator[] = [{ rawLabel: "GLU", value: 6.4, unit: "mmol/L", pageIndex: 0 }];
+    const result = resolveIndicators(extracted, userCats);
+    expect(result[0].action).toBe("import");
+    expect(result[0].systemId).toBe("bloodSugar");
+  });
+
+  it("用户维护别名时按别名导入", () => {
+    const userCats = [
+      {
+        id: "bloodRoutine",
+        name: "血常规",
+        items: [{ id: "wbcUser", label: "白细胞", unit: "g/L", aliases: ["WBC", "白细胞计数"] }],
+      },
+    ];
+    const extracted: ExtractedIndicator[] = [{ rawLabel: "WBC", value: 6.5, unit: "g/L", pageIndex: 0 }];
+    const result = resolveIndicators(extracted, userCats);
+    expect(result[0].action).toBe("import");
+    expect(result[0].systemId).toBe("wbcUser");
+    expect(result[0].userItemFound).toBe(true);
+  });
+
   it("未匹配指标 action 为 unnamed", () => {
     const result = resolveIndicators([{ rawLabel: "未知指标", value: 10, unit: "U/L", pageIndex: 0 }], []);
     expect(result[0].action).toBe("unnamed");

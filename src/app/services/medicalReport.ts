@@ -1,12 +1,27 @@
 /**
- * 体检报告解析服务 — 调用本地后端 PaddleOCR 解析 API
+ * 体检报告解析服务 — 调用 OCR 解析 API
  */
 
-const DEFAULT_PARSER_ENDPOINTS = [
-  "https://essentialsa-health-data-ocr.onrender.com",
-  "http://127.0.0.1:8000",
-  "http://localhost:8000",
-];
+const REMOTE_PARSER_ENDPOINTS = ["https://essentialsa-health-data-ocr.onrender.com"];
+const LOCAL_PARSER_ENDPOINTS = ["http://127.0.0.1:8000", "http://localhost:8000"];
+const PARSE_TIMEOUT_MS = 90000;
+const HEALTH_CHECK_TIMEOUT_MS = 15000;
+
+const isLocalBrowserPage = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+};
+
+const isLocalParserEndpoint = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+};
 
 const normalizeParserEndpoint = (value: string): string | null => {
   const trimmed = value.trim().replace(/\/+$/, "");
@@ -22,17 +37,24 @@ const normalizeParserEndpoint = (value: string): string | null => {
 };
 
 const collectParserEndpoints = (): string[] => {
+  const allowLocalParser = isLocalBrowserPage();
+  const defaultParserEndpoints = allowLocalParser
+    ? [...REMOTE_PARSER_ENDPOINTS, ...LOCAL_PARSER_ENDPOINTS]
+    : REMOTE_PARSER_ENDPOINTS;
   const envList = (import.meta.env.VITE_REPORT_PARSER_URLS || "")
     .split(",")
     .map(item => item.trim())
     .filter(Boolean);
   const single = (import.meta.env.VITE_REPORT_PARSER_URL || "").trim();
   const configured = [...envList, ...(single ? [single] : [])];
-  const merged = configured.length > 0 ? [...configured, ...DEFAULT_PARSER_ENDPOINTS] : DEFAULT_PARSER_ENDPOINTS;
+  const merged = configured.length > 0 ? [...configured, ...defaultParserEndpoints] : defaultParserEndpoints;
   const deduped: string[] = [];
   for (const endpoint of merged) {
     const normalized = normalizeParserEndpoint(endpoint);
     if (!normalized || deduped.includes(normalized)) {
+      continue;
+    }
+    if (!allowLocalParser && isLocalParserEndpoint(normalized)) {
       continue;
     }
     deduped.push(normalized);
@@ -162,7 +184,7 @@ export async function parseMedicalReport(file: File): Promise<ParseResult> {
       const resp = await fetchWithTimeout(
         `${endpoint}/api/parse`,
         { method: "POST", body: createUploadFormData(file) },
-        45000,
+        PARSE_TIMEOUT_MS,
       );
 
       if (resp.ok) {
@@ -194,7 +216,7 @@ export async function checkParserService(): Promise<ParserServiceStatus> {
   const errors: EndpointAttemptError[] = [];
   for (const endpoint of PARSER_ENDPOINTS) {
     try {
-      const resp = await fetchWithTimeout(`${endpoint}/api/health`, { method: "GET" }, 3000);
+      const resp = await fetchWithTimeout(`${endpoint}/api/health`, { method: "GET" }, HEALTH_CHECK_TIMEOUT_MS);
       if (resp.ok) {
         return {
           online: true,
@@ -297,6 +319,155 @@ export const DEFAULT_MAPPINGS: IndicatorMapping[] = [
   { systemId: "aptt", systemLabel: "活化部分凝血活酶时间", categoryId: "coagulation", aliases: [{ alias: "活化部分凝血活酶时间", priority: 10 }, { alias: "APTT", priority: 9 }], units: ["秒"], normalRange: "25-37" },
 ];
 
+export interface UserIndicatorItem {
+  id: string;
+  label: string;
+  unit?: string;
+  code?: string;
+  referenceRange?: string;
+  aliases?: string[];
+}
+
+export interface UserIndicatorCategory {
+  id: string;
+  name: string;
+  code?: string;
+  items: UserIndicatorItem[];
+}
+
+const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
+  blood_pressure: "血压",
+  blood_routine: "血常规",
+  blood_glucose: "血糖",
+  blood_lipids: "血脂",
+  liver_function: "肝功能",
+  kidney_function: "肾功能",
+  thyroid: "甲状腺功能",
+  cardiac: "心肌标志物",
+  tumor_markers: "肿瘤标志物",
+  electrolytes: "电解质",
+  inflammation: "炎症指标",
+  body_metrics: "身体指标",
+  coagulation: "凝血功能",
+};
+
+const normalizeIndicatorText = (value: string): string =>
+  value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[%％]/g, "%")
+    .replace(/[·•]/g, "")
+    .replace(/[\s_：:()（）[\]【】{}<>《》,，、;；/\\|+\-.]/g, "");
+
+const normalizeUnit = (value: string): string =>
+  value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[µμ]/g, "u")
+    .replace(/[×*]/g, "x")
+    .replace(/／/g, "/")
+    .replace(/\s+/g, "");
+
+const collectIndicatorTokens = (...values: Array<string | undefined>): string[] => {
+  const tokens = new Set<string>();
+  const add = (text?: string) => {
+    if (!text) {
+      return;
+    }
+    const normalized = normalizeIndicatorText(text);
+    if (normalized) {
+      tokens.add(normalized);
+    }
+  };
+
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    add(value);
+
+    const bracketMatches = value.matchAll(/[（(]([^（）()]+)[）)]/g);
+    for (const match of bracketMatches) {
+      add(match[1]);
+    }
+
+    add(value.replace(/[（(][^（）()]+[）)]/g, " "));
+    value.split(/[,\s，、;；/\\|]+/).forEach(add);
+  }
+  return Array.from(tokens);
+};
+
+const mappingAliasValues = (mapping: IndicatorMapping): string[] => [
+  mapping.systemId,
+  mapping.systemLabel,
+  ...mapping.aliases.map(item => item.alias),
+];
+
+const bestTokenScore = (rawTokens: string[], candidateTokens: string[]) => {
+  let best = { score: 0, matchType: "none" as "exact" | "fuzzy" | "none", similarity: undefined as number | undefined };
+
+  for (const raw of rawTokens) {
+    for (const candidate of candidateTokens) {
+      if (!raw || !candidate) {
+        continue;
+      }
+      if (raw === candidate) {
+        return { score: 1, matchType: "exact" as const, similarity: 1 };
+      }
+
+      const minLength = Math.min(raw.length, candidate.length);
+      const maxLength = Math.max(raw.length, candidate.length);
+      if (minLength >= 2 && (raw.includes(candidate) || candidate.includes(raw))) {
+        const score = Math.max(0.88, minLength / maxLength);
+        if (score > best.score) {
+          best = { score, matchType: "fuzzy", similarity: score };
+        }
+        continue;
+      }
+
+      if (minLength <= 2) {
+        continue;
+      }
+
+      const score = similarity(raw, candidate);
+      if (score > best.score && score > 0.82) {
+        best = { score, matchType: "fuzzy", similarity: score };
+      }
+    }
+  }
+
+  return best;
+};
+
+const unitCompatibilityScore = (observedUnit: string, candidateUnits: string[]) => {
+  const observed = normalizeUnit(observedUnit);
+  const normalizedCandidates = candidateUnits.map(normalizeUnit).filter(Boolean);
+  if (!observed || normalizedCandidates.length === 0) {
+    return 0;
+  }
+  if (normalizedCandidates.some(unit => unit === observed)) {
+    return 0.04;
+  }
+  return -0.02;
+};
+
+const mappingsRelatedToUserItem = (item: UserIndicatorItem, mappings: IndicatorMapping[]): IndicatorMapping[] => {
+  const itemTokens = collectIndicatorTokens(item.id, item.label, item.code, ...(item.aliases || []));
+  return mappings.filter(mapping => {
+    const mappingTokens = collectIndicatorTokens(...mappingAliasValues(mapping));
+    return bestTokenScore(itemTokens, mappingTokens).score >= 0.88;
+  });
+};
+
+const categoryMatchesMapping = (category: UserIndicatorCategory, categoryId: string): boolean => {
+  const defaultName = DEFAULT_CATEGORY_LABELS[categoryId];
+  const categoryTokens = collectIndicatorTokens(category.id, category.name, category.code);
+  const targetTokens = collectIndicatorTokens(categoryId, defaultName);
+  return bestTokenScore(categoryTokens, targetTokens).score >= 0.88;
+};
+
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
@@ -314,18 +485,27 @@ function similarity(a: string, b: string): number {
 }
 
 export function matchIndicator(rawLabel: string, mappings: IndicatorMapping[] = DEFAULT_MAPPINGS): Omit<MatchedIndicator, 'value' | 'unit' | 'referenceRange' | 'pageIndex' | 'rawLabel' | 'confidence'> {
-  const n = rawLabel.trim();
-  for (const m of mappings)
-    for (const a of m.aliases)
-      if (n === a.alias) return { systemId: m.systemId, systemLabel: m.systemLabel, categoryId: m.categoryId, matchType: 'exact' };
-
+  const rawTokens = collectIndicatorTokens(rawLabel);
   let best = 0, result: ReturnType<typeof matchIndicator> = { matchType: 'none' };
-  for (const m of mappings)
-    for (const a of m.aliases) {
-      const s = similarity(n.toLowerCase(), a.alias.toLowerCase());
-      if (s > best && s > 0.8) { best = s; result = { systemId: m.systemId, systemLabel: m.systemLabel, categoryId: m.categoryId, matchType: 'fuzzy', similarity: s }; }
+
+  for (const m of mappings) {
+    const score = bestTokenScore(rawTokens, collectIndicatorTokens(...mappingAliasValues(m)));
+    if (score.matchType === 'exact') {
+      return { systemId: m.systemId, systemLabel: m.systemLabel, categoryId: m.categoryId, matchType: 'exact' };
     }
-  return result;
+    if (score.score > best) {
+      best = score.score;
+      result = {
+        systemId: m.systemId,
+        systemLabel: m.systemLabel,
+        categoryId: m.categoryId,
+        matchType: 'fuzzy',
+        similarity: score.similarity,
+      };
+    }
+  }
+
+  return best > 0.82 ? result : { matchType: 'none' };
 }
 
 export function calcConfidence(match: { matchType: string; similarity?: number }, value: number): { level: 'high' | 'medium' | 'low'; score: number; reasons: string[] } {
@@ -402,45 +582,104 @@ export interface ResolvedIndicator {
   action: 'import' | 'create_category' | 'create_item' | 'unnamed';
 }
 
+const matchUserIndicator = (
+  indicator: ExtractedIndicator,
+  userCategories: UserIndicatorCategory[],
+  mappings: IndicatorMapping[],
+) => {
+  const rawTokens = collectIndicatorTokens(indicator.rawLabel);
+  let best:
+    | {
+        category: UserIndicatorCategory;
+        item: UserIndicatorItem;
+        score: number;
+        matchType: 'exact' | 'fuzzy';
+        similarity?: number;
+      }
+    | null = null;
+
+  for (const category of userCategories) {
+    for (const item of category.items) {
+      const relatedMappings = mappingsRelatedToUserItem(item, mappings);
+      const candidateTokens = collectIndicatorTokens(
+        item.id,
+        item.label,
+        item.code,
+        ...(item.aliases || []),
+        ...relatedMappings.flatMap(mappingAliasValues),
+      );
+      const labelScore = bestTokenScore(rawTokens, candidateTokens);
+      if (labelScore.score === 0) {
+        continue;
+      }
+
+      const unitScore = unitCompatibilityScore(
+        indicator.unit,
+        [item.unit, ...relatedMappings.flatMap(mapping => mapping.units)].filter(Boolean) as string[],
+      );
+      const score = Math.min(1, labelScore.score + unitScore);
+      if (!best || score > best.score) {
+        best = {
+          category,
+          item,
+          score,
+          matchType: labelScore.matchType === 'exact' ? 'exact' : 'fuzzy',
+          similarity: labelScore.similarity,
+        };
+      }
+    }
+  }
+
+  return best && best.score >= 0.82 ? best : null;
+};
+
 /**
  * 核心函数：将提取的指标与用户现有分类体系进行映射
  */
 export function resolveIndicators(
   extracted: ExtractedIndicator[],
-  userCategories: { id: string; name: string; items: { id: string; label: string }[] }[],
+  userCategories: UserIndicatorCategory[],
   mappings: IndicatorMapping[] = DEFAULT_MAPPINGS
 ): ResolvedIndicator[] {
   return extracted.map(ind => {
-    // 第一步：先检查用户已有的指标分类和指标项（用户分类优先）
-    for (const cat of userCategories) {
-      for (const item of cat.items) {
-        // 用户指标项名称与提取的指标名称完全匹配
-        if (item.label === ind.rawLabel.trim() || item.id === ind.rawLabel.trim()) {
-          return {
-            ...ind,
-            systemId: item.id,
-            systemLabel: item.label,
-            categoryId: cat.id,
-            matchType: 'exact' as const,
-            confidence: { level: 'high' as const, score: 1.0, reasons: ['用户已有指标'] },
-            userItemFound: true,
-            userItemId: item.id,
-            userCategoryId: cat.id,
-            action: 'import' as const,
-          };
-        }
-      }
+    // 第一步：先匹配用户维护的指标库，用户库命中才允许直接导入。
+    const userMatch = matchUserIndicator(ind, userCategories, mappings);
+    if (userMatch) {
+      const confidence = calcConfidence(
+        { matchType: userMatch.matchType, similarity: userMatch.similarity },
+        ind.value,
+      );
+      return {
+        ...ind,
+        systemId: userMatch.item.id,
+        systemLabel: userMatch.item.label,
+        categoryId: userMatch.category.id,
+        matchType: userMatch.matchType,
+        similarity: userMatch.similarity,
+        confidence: {
+          ...confidence,
+          score: userMatch.score,
+          level: userMatch.score >= 0.85 ? 'high' : userMatch.score >= 0.6 ? 'medium' : 'low',
+          reasons: ['用户指标库命中', ...confidence.reasons],
+        },
+        userItemFound: true,
+        userItemId: userMatch.item.id,
+        userCategoryId: userMatch.category.id,
+        action: 'import' as const,
+      };
     }
 
-    // 第二步：用户没有该指标，用词典做候选匹配，给出新建分类建议
+    // 第二步：用户库没有该指标，用标准词典做候选建议，但不直接导入。
     const match = matchIndicator(ind.rawLabel, mappings);
-    const confidence = calcConfidence(match, ind.value);
+    const baseConfidence = calcConfidence(match, ind.value);
+    const confidence = {
+      ...baseConfidence,
+      reasons: ['未命中用户指标库，以下仅为标准词典建议', ...baseConfidence.reasons],
+    };
 
     if (match.systemId) {
-      // 词典匹配成功 → 建议创建新指标或归入已有分类
-      const existingCat = userCategories.find(c => c.name === match.categoryId);
+      const existingCat = userCategories.find(c => categoryMatchesMapping(c, match.categoryId || ""));
       if (existingCat) {
-        // 用户有同名分类 → 建议在该分类下创建新指标
         return {
           ...ind,
           systemId: match.systemId,
@@ -472,7 +711,7 @@ export function resolveIndicators(
     return {
       ...ind,
       matchType: 'none' as const,
-      confidence: { level: 'low' as const, score: 0, reasons: ['未匹配'] },
+      confidence: { level: 'low' as const, score: 0, reasons: ['未命中用户指标库，也未命中标准词典'] },
       userItemFound: false,
       action: 'unnamed' as const,
     };
@@ -500,7 +739,7 @@ export function getCategoriesToCreate(resolved: ResolvedIndicator[]): { category
   }
   return Array.from(map.entries()).map(([catId, indicators]) => ({
     categoryId: catId,
-    categoryName: indicators[0].systemLabel!, // 用第一个指标的系统名作为分类名建议
+    categoryName: DEFAULT_CATEGORY_LABELS[catId] || catId,
     indicators,
   }));
 }

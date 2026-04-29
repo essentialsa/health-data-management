@@ -19,6 +19,7 @@ import {
   type ParseResult,
   type ParserServiceStatus,
   type ResolvedIndicator,
+  type UserIndicatorCategory,
 } from "@/app/services/medicalReport";
 import { CategorySelectDialog } from "./CategorySelectDialog";
 
@@ -27,7 +28,7 @@ const MAX_SIZE = 50 * 1024 * 1024;
 
 interface Props {
   onImportRecords: (records: HealthRecord[]) => void;
-  existingCategories?: { id: string; name: string; items: { id: string; label: string }[] }[];
+  existingCategories?: UserIndicatorCategory[];
   triggerClassName?: string;
 }
 
@@ -76,8 +77,8 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
     if (!file) return;
     const latestStatus = await checkService();
     if (!latestStatus.online) {
-      setError(latestStatus.message || "解析服务未就绪，请先启动 OCR 服务");
-      return;
+      // Render 免费实例冷启动时健康检查可能先超时，继续直接解析可触发实例启动。
+      setError(null);
     }
     setParsing(true);
     setProgress(0);
@@ -93,22 +94,8 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
           ? r.indicators
           : extractIndicatorsFromTables(r.tables);
       const resolved = resolveIndicators(extracted, existingCategories);
-      const grouped = groupByAction(resolved);
       setMatched(resolved);
-
-      if (grouped.createCategory.length > 0 || grouped.createItem.length > 0) {
-        // 有分类需要处理
-        const catsToCreate = getCategoriesToCreate(resolved);
-        if (catsToCreate.length > 0) {
-          setPendingCategories(catsToCreate);
-          setCategoryDialogOpen(true);
-          // 解析完成但不自动跳转，等用户处理完分类
-          clearInterval(timer);
-          setResult(r);
-          setProgress(100);
-          return;
-        }
-      }
+      setPendingCategories(getCategoriesToCreate(resolved));
 
       clearInterval(timer);
       setProgress(100);
@@ -126,11 +113,11 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
     if (!result) return;
     const date = result.reportDate || new Date().toISOString().split("T")[0];
     const records: HealthRecord[] = matched
-      .filter(m => m.matchType !== "none" && m.systemId)
+      .filter(m => m.action === "import" && (m.userItemId || m.systemId))
       .map(m => ({
-        id: `${Date.now()}_${m.systemId}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `${Date.now()}_${m.userItemId || m.systemId}_${Math.random().toString(36).slice(2, 8)}`,
         date,
-        indicatorType: m.systemId!,
+        indicatorType: (m.userItemId || m.systemId)!,
         value: m.value,
         unit: m.unit,
         operationAt: new Date().toISOString(),
@@ -162,9 +149,18 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
   const filtered = matched.filter(m => filter === "all" || m.confidence.level === filter);
   const counts = { all: matched.length, high: matched.filter(m => m.confidence.level === "high").length, medium: matched.filter(m => m.confidence.level === "medium").length, low: matched.filter(m => m.confidence.level === "low").length };
+  const groupedCounts = groupByAction(matched);
+  const importableCount = groupedCounts.import.length;
+  const suggestedCount = groupedCounts.createCategory.length + groupedCounts.createItem.length;
 
   const confColor: Record<string, "default" | "secondary" | "destructive"> = { high: "default", medium: "secondary", low: "destructive" };
   const confLabel: Record<string, string> = { high: "高", medium: "中", low: "低" };
+  const actionLabel: Record<ResolvedIndicator["action"], string> = {
+    import: "匹配模板",
+    create_category: "建议新增分类",
+    create_item: "建议新增指标",
+    unnamed: "未命名",
+  };
 
   return (
     <>
@@ -262,7 +258,7 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>取消</Button>
-              <Button disabled={!file || serviceChecking || serviceOnline === false} onClick={handleParse}>
+              <Button disabled={!file || serviceChecking || parsing} onClick={handleParse}>
                 {parsing ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> 解析中...</> : "开始解析"}
               </Button>
             </div>
@@ -304,19 +300,28 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
                       <TableHead className="text-right">数值</TableHead>
                       <TableHead>单位</TableHead>
                       <TableHead>参考范围</TableHead>
+                      <TableHead>处理方式</TableHead>
                       <TableHead className="text-center">置信度</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.length === 0 && (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">无数据</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">无数据</TableCell></TableRow>
                     )}
                     {filtered.map((m, i) => (
-                      <TableRow key={i} className={m.matchType === "none" ? "bg-orange-50" : m.confidence.level === "low" ? "bg-red-50/50" : undefined}>
+                      <TableRow key={i} className={m.action !== "import" ? "bg-orange-50" : m.confidence.level === "low" ? "bg-red-50/50" : undefined}>
                         <TableCell className="font-medium">{m.rawLabel}</TableCell>
                         <TableCell className="text-right">{m.value}</TableCell>
                         <TableCell>{m.unit}</TableCell>
                         <TableCell className="text-muted-foreground text-xs">{m.referenceRange || "-"}</TableCell>
+                        <TableCell>
+                          <Badge variant={m.action === "import" ? "default" : "secondary"} className="text-xs">
+                            {actionLabel[m.action]}
+                          </Badge>
+                          {m.action !== "import" && m.systemLabel ? (
+                            <div className="mt-1 text-[11px] text-muted-foreground">建议：{m.systemLabel}</div>
+                          ) : null}
+                        </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={confColor[m.confidence.level]} className="text-xs">{confLabel[m.confidence.level]}</Badge>
                         </TableCell>
@@ -324,6 +329,29 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* 标准词典建议 */}
+                {suggestedCount > 0 && (
+                  <div className="mt-4 border rounded-lg p-4 bg-blue-50/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertCircle className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-medium text-blue-800">建议维护到指标库（{suggestedCount} 项）</h4>
+                    </div>
+                    <div className="space-y-2 text-sm text-blue-900">
+                      {[...groupedCounts.createItem, ...groupedCounts.createCategory].map((m, i) => (
+                        <div key={`suggestion-${i}`} className="rounded-md bg-white px-3 py-2">
+                          {m.rawLabel} → {m.systemLabel || "待确认"}
+                          <span className="ml-2 text-xs text-blue-500">
+                            {m.action === "create_item" ? "已有分类，建议新增指标" : "建议新增分类"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      这些项目未命中用户维护的指标项，本次不会直接导入；请先在“检验指标维护”中确认后再导入。
+                    </p>
+                  </div>
+                )}
 
                 {/* 未匹配指标区域 */}
                 {matched.filter(m => m.matchType === "none").length > 0 && (
@@ -356,17 +384,18 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
                 {/* 统计信息 */}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2 pt-2">
-                  <span>✅ 可导入: {matched.filter(m => m.matchType !== "none").length}</span>
-                  <span>📝 未命名: {matched.filter(m => m.matchType === "none").length}</span>
+                  <span>可导入: {importableCount}</span>
+                  <span>建议维护: {suggestedCount}</span>
+                  <span>未命名: {groupedCounts.unnamed.length}</span>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => { setTab("upload"); setResult(null); setMatched([]); }}>
                     <RefreshCw className="w-4 h-4 mr-1" /> 重新上传
                   </Button>
-                  <Button onClick={handleImport} disabled={matched.filter(m => m.matchType !== "none").length === 0}>
+                  <Button onClick={handleImport} disabled={importableCount === 0}>
                     <CheckCircle className="w-4 h-4 mr-1" />
-                    确认导入 ({matched.filter(m => m.matchType !== "none").length} 条)
+                    确认导入 ({importableCount} 条)
                   </Button>
                 </div>
               </>

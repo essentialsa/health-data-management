@@ -16,6 +16,6 @@ services:
       - key: TESSERACT_LANG
         value: chi_sim+eng
       - key: ALLOWED_ORIGINS
-        value: https://health-data-mgmt.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+        value: "*"
       - key: CORS_ALLOW_CREDENTIALS
-        value: "true"
+        value: "false"

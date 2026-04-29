@@ -14,6 +14,7 @@ export interface IndicatorItem {
   unit: string;
   code?: string;
   referenceRange?: string;
+  aliases?: string[];
   dataType?: "number" | "text" | "boolean";
   enabled?: boolean;
   order?: number;

@@ -438,6 +438,14 @@ const LEGACY_CHANGE_LOG_STORAGE_KEY = "health_change_logs";
 
 const createLogId = () => `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+const parseAliasText = (value?: string): string[] =>
+  (value || "")
+    .split(/[,，、;；\n]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+
+const formatAliasText = (aliases?: string[]): string => (aliases || []).join("、");
+
 const DEFAULT_INDICATOR_CATEGORIES: IndicatorCategory[] = [
   {
     id: "bloodPressure",
@@ -556,6 +564,7 @@ function IndicatorMaintenanceDialog({
       unit: string;
       code?: string;
       referenceRange?: string;
+      aliases?: string;
       dataType?: "number" | "text" | "boolean";
       enabled?: boolean;
     }>
@@ -585,6 +594,7 @@ function IndicatorMaintenanceDialog({
         unit: item.unit,
         code: item.code,
         referenceRange: item.referenceRange,
+        aliases: formatAliasText(item.aliases),
         dataType: item.dataType || "number",
         enabled: item.enabled !== false,
       })),
@@ -614,6 +624,7 @@ function IndicatorMaintenanceDialog({
         ...item,
         name: item.name.trim(),
         unit: item.unit.trim(),
+        aliases: item.aliases?.trim(),
       }))
       .filter(item => item.name !== "");
 
@@ -649,6 +660,7 @@ function IndicatorMaintenanceDialog({
         unit: item.unit,
         code: item.code?.trim() || undefined,
         referenceRange: item.referenceRange?.trim() || undefined,
+        aliases: parseAliasText(item.aliases).length > 0 ? parseAliasText(item.aliases) : undefined,
         dataType: item.dataType || "number",
         enabled: item.enabled !== false,
         order: index,
@@ -739,6 +751,7 @@ function IndicatorMaintenanceDialog({
           prevItem.unit !== nextItem.unit ||
           (prevItem.code || "") !== (nextItem.code || "") ||
           (prevItem.referenceRange || "") !== (nextItem.referenceRange || "") ||
+          formatAliasText(prevItem.aliases) !== formatAliasText(nextItem.aliases) ||
           (prevItem.dataType || "number") !== (nextItem.dataType || "number") ||
           (prevItem.enabled !== nextItem.enabled) ||
           (prevItem.order ?? 0) !== (nextItem.order ?? 0);
@@ -1050,16 +1063,17 @@ function IndicatorMaintenanceDialog({
                     </div>
                     <div className="rounded-xl border border-violet-100 bg-white/80">
                       <div className="grid grid-cols-12 gap-2 px-3 py-2 border-b border-violet-50 text-[11px] text-gray-500">
-                        <div className="col-span-4">项目名称</div>
+                        <div className="col-span-3">项目名称</div>
+                        <div className="col-span-3">别名/缩写</div>
                         <div className="col-span-2">单位</div>
-                        <div className="col-span-3">参考范围</div>
-                        <div className="col-span-2">数据类型</div>
+                        <div className="col-span-2">参考范围</div>
+                        <div className="col-span-1">类型</div>
                         <div className="col-span-1 text-right">排序</div>
                       </div>
                       <div className="max-h-56 overflow-y-auto py-1 pr-1 space-y-1">
                         {items.map((item, index) => (
                           <div key={item.id} className="grid grid-cols-12 gap-2 items-center px-3 py-1.5">
-                            <div className="col-span-4">
+                            <div className="col-span-3">
                               <Input
                                 value={item.name}
                                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -1070,6 +1084,20 @@ function IndicatorMaintenanceDialog({
                                   )
                                 }
                                 placeholder="项目名称，例如：总胆固醇"
+                                className="h-8 border-violet-200 focus:border-violet-400 focus:ring-violet-400"
+                              />
+                            </div>
+                            <div className="col-span-3">
+                              <Input
+                                value={item.aliases || ""}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                  setItems(prev =>
+                                    prev.map((row, i) =>
+                                      i === index ? { ...row, aliases: e.target.value } : row,
+                                    ),
+                                  )
+                                }
+                                placeholder="GLU、葡萄糖、空腹血糖"
                                 className="h-8 border-violet-200 focus:border-violet-400 focus:ring-violet-400"
                               />
                             </div>
@@ -1087,7 +1115,7 @@ function IndicatorMaintenanceDialog({
                                 className="h-8 border-violet-200 focus:border-violet-400 focus:ring-violet-400"
                               />
                             </div>
-                            <div className="col-span-3">
+                            <div className="col-span-2">
                               <Input
                                 value={item.referenceRange || ""}
                                 onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -1101,7 +1129,7 @@ function IndicatorMaintenanceDialog({
                                 className="h-8 border-violet-200 focus:border-violet-400 focus:ring-violet-400"
                               />
                             </div>
-                            <div className="col-span-2">
+                            <div className="col-span-1">
                               <Select
                                 value={item.dataType || "number"}
                                 onValueChange={(value: "number" | "text" | "boolean") =>
@@ -4830,18 +4858,26 @@ export default function App() {
                 existingCategories={indicatorCategories.map(category => ({
                   id: category.id,
                   name: category.name,
-                  items: category.items.map(item => ({ id: item.id, label: item.label })),
+                  code: category.code,
+                  items: category.items.map(item => ({
+                    id: item.id,
+                    label: item.label,
+                    unit: item.unit,
+                    code: item.code,
+                    referenceRange: item.referenceRange,
+                    aliases: item.aliases,
+                  })),
                 }))}
-                triggerClassName={actionTriggerClassName}
-              />
-              <ImportRecordsDialog
-                categories={indicatorCategories}
-                onImportRecords={handleImportRecords}
                 triggerClassName={actionTriggerClassName}
               />
               <ConsultationBriefDialog
                 categories={indicatorCategories}
                 records={records}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ImportRecordsDialog
+                categories={indicatorCategories}
+                onImportRecords={handleImportRecords}
                 triggerClassName={actionTriggerClassName}
               />
               <ExportDialog

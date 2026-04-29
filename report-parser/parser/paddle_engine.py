@@ -483,6 +483,8 @@ class PaddleEngine:
 
         # 清理指标名称 — 去掉可能的英文括号缩写
         clean_label = name.strip()
+        if self._is_metadata_label(clean_label):
+            return None
 
         return {
             "rawLabel": clean_label,
@@ -528,6 +530,8 @@ class PaddleEngine:
                     except ValueError:
                         continue
                     unit = m.group(3) if m.lastindex and m.lastindex >= 3 else ''
+                    if self._is_metadata_label(label):
+                        break
                     indicators.append({
                         "rawLabel": label,
                         "value": value,
@@ -538,6 +542,21 @@ class PaddleEngine:
                     break
 
         return indicators
+
+    def _is_metadata_label(self, label: str) -> bool:
+        normalized = re.sub(r'\s+', ' ', label.strip().lower())
+        metadata_keywords = [
+            "report date",
+            "sample date",
+            "test date",
+            "collection date",
+            "检验日期",
+            "报告日期",
+            "采样日期",
+            "送检日期",
+            "日期",
+        ]
+        return any(keyword in normalized for keyword in metadata_keywords)
 
     def _generate_table_markdown(self, table_structure: Dict) -> List[str]:
         """生成表格 Markdown"""

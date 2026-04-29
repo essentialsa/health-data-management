@@ -100,7 +100,7 @@ class PaddleEngine:
 
     def _real_parse(self, file_content: bytes, filename: str) -> dict:
         """真实 PaddleOCR 解析"""
-        if not self._ocr:
+        if self.backend == "paddle" and not self._ocr:
             raise RuntimeError("PaddleOCR 未安装")
 
         try:

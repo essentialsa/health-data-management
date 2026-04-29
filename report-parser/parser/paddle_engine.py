@@ -1,5 +1,6 @@
 """PaddleOCR 引擎封装 - PaddleOCR 2.7.3 + PP-OCRv4"""
 import io
+import os
 import re
 from typing import Optional, List, Dict, Any
 from PIL import Image
@@ -14,11 +15,57 @@ except Exception as exc:
     PADDLE_IMPORT_ERROR = repr(exc)
 
 try:
+    import pytesseract
+    from pytesseract import Output
+    TESSERACT_AVAILABLE = True
+    TESSERACT_IMPORT_ERROR = None
+except Exception as exc:
+    pytesseract = None  # type: ignore[assignment]
+    Output = None  # type: ignore[assignment]
+    TESSERACT_AVAILABLE = False
+    TESSERACT_IMPORT_ERROR = repr(exc)
+
+try:
     import fitz
     PDF_RENDER_AVAILABLE = True
 except ImportError:
     fitz = None  # type: ignore[assignment]
     PDF_RENDER_AVAILABLE = False
+
+
+def get_ocr_status(use_mock: bool = False) -> Dict[str, Any]:
+    requested_engine = os.getenv("OCR_ENGINE", "tesseract").lower()
+    if use_mock:
+        return {"engine": "mock", "available": True, "error": None}
+
+    if requested_engine in ("tesseract", "tesseract-ocr"):
+        return {
+            "engine": "tesseract",
+            "available": TESSERACT_AVAILABLE,
+            "error": TESSERACT_IMPORT_ERROR,
+        }
+
+    if requested_engine == "paddle":
+        return {
+            "engine": "paddle",
+            "available": PADDLE_AVAILABLE,
+            "error": PADDLE_IMPORT_ERROR,
+        }
+
+    if requested_engine == "auto":
+        if TESSERACT_AVAILABLE:
+            return {"engine": "tesseract", "available": True, "error": None}
+        return {
+            "engine": "paddle",
+            "available": PADDLE_AVAILABLE,
+            "error": PADDLE_IMPORT_ERROR or TESSERACT_IMPORT_ERROR,
+        }
+
+    return {
+        "engine": requested_engine,
+        "available": False,
+        "error": f"未知 OCR_ENGINE: {requested_engine}",
+    }
 
 
 class PaddleEngine:
@@ -27,8 +74,23 @@ class PaddleEngine:
     def __init__(self, use_mock: bool = False):
         self.use_mock = use_mock
         self._ocr = None
-        if not use_mock and PADDLE_AVAILABLE:
+        self.backend = "mock" if use_mock else get_ocr_status(use_mock)["engine"]
+
+        if use_mock:
+            return
+
+        if self.backend == "paddle":
+            if not PADDLE_AVAILABLE:
+                raise RuntimeError(f"PaddleOCR 不可用: {PADDLE_IMPORT_ERROR}")
             self._ocr = PaddleOCR(use_angle_cls=True, lang='ch', show_log=False)
+            return
+
+        if self.backend == "tesseract":
+            if not TESSERACT_AVAILABLE:
+                raise RuntimeError(f"Tesseract OCR 不可用: {TESSERACT_IMPORT_ERROR}")
+            return
+
+        raise RuntimeError(f"未知 OCR 引擎: {self.backend}")
 
     def parse_pdf(self, file_content: bytes, filename: str = "report.pdf") -> dict:
         """解析 PDF 或图片文件，返回结构化数据"""
@@ -92,7 +154,59 @@ class PaddleEngine:
         if not page_images:
             raise RuntimeError("未能读取到可解析的页面内容")
 
+        if self.backend == "tesseract":
+            return [self._run_tesseract(page_image) for page_image in page_images]
+
         return [self._ocr.ocr(page_image, cls=True) for page_image in page_images]
+
+    def _run_tesseract(self, page_image: np.ndarray):
+        """将 Tesseract 输出转换为 PaddleOCR 兼容结构。"""
+        if not pytesseract or not Output:
+            raise RuntimeError("Tesseract OCR 未安装")
+
+        image = Image.fromarray(page_image)
+        lang = os.getenv("TESSERACT_LANG", "chi_sim+eng")
+        data = pytesseract.image_to_data(image, lang=lang, output_type=Output.DICT)
+
+        line_groups: Dict[tuple, List[Dict[str, Any]]] = {}
+        for i, text in enumerate(data.get("text", [])):
+            text = (text or "").strip()
+            if not text:
+                continue
+
+            try:
+                confidence = float(data.get("conf", [0])[i])
+            except (TypeError, ValueError):
+                confidence = 0.0
+
+            key = (
+                data.get("block_num", [0])[i],
+                data.get("par_num", [0])[i],
+                data.get("line_num", [0])[i],
+            )
+            line_groups.setdefault(key, []).append({
+                "text": text,
+                "confidence": confidence,
+                "left": int(data.get("left", [0])[i]),
+                "top": int(data.get("top", [0])[i]),
+                "width": int(data.get("width", [0])[i]),
+                "height": int(data.get("height", [0])[i]),
+            })
+
+        lines = []
+        for group in line_groups.values():
+            x_min = min(item["left"] for item in group)
+            y_min = min(item["top"] for item in group)
+            x_max = max(item["left"] + item["width"] for item in group)
+            y_max = max(item["top"] + item["height"] for item in group)
+            text = " ".join(item["text"] for item in group)
+            confidence = sum(item["confidence"] for item in group) / max(1, len(group))
+            lines.append([
+                [[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]],
+                (text, confidence),
+            ])
+
+        return [lines]
 
     def _is_pdf(self, file_content: bytes, filename: str) -> bool:
         if file_content.startswith(b"%PDF"):

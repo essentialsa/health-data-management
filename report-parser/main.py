@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 
-from parser.paddle_engine import PaddleEngine, PADDLE_AVAILABLE, PADDLE_IMPORT_ERROR
+from parser.paddle_engine import PaddleEngine, get_ocr_status
 from parser.table_extractor import extract_table_structure
 from parser.date_extractor import extract_report_date
 
@@ -82,18 +82,20 @@ class ParseResponse(BaseModel):
 
 @app.get("/api/health")
 async def health_check():
-    ocr_ready = USE_MOCK or PADDLE_AVAILABLE
+    ocr_status = get_ocr_status(USE_MOCK)
+    ocr_ready = ocr_status["available"]
     if not ocr_ready:
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "OCR 引擎未就绪：当前环境未安装 PaddleOCR，请安装 paddlepaddle/paddleocr 或设置 USE_MOCK=true",
-                "import_error": PADDLE_IMPORT_ERROR,
+                "message": "OCR 引擎未就绪：请检查 OCR_ENGINE 和系统依赖",
+                "engine": ocr_status["engine"],
+                "import_error": ocr_status["error"],
             },
         )
     return {
         "status": "ok",
-        "model": "PaddleOCR",
+        "model": ocr_status["engine"],
         "mock_mode": USE_MOCK,
         "ocr_ready": ocr_ready,
     }
@@ -102,9 +104,11 @@ async def health_check():
 @app.get("/api/healthz")
 async def service_health_check():
     """Render 部署健康检查：只确认 Web 进程已启动。"""
+    ocr_status = get_ocr_status(USE_MOCK)
     return {
         "status": "ok",
-        "ocr_ready": USE_MOCK or PADDLE_AVAILABLE,
+        "ocr_ready": ocr_status["available"],
+        "model": ocr_status["engine"],
     }
 
 

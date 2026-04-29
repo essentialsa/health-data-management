@@ -40,7 +40,14 @@ app.add_middleware(
 
 # 初始化引擎（默认使用真实 PaddleOCR）
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
-engine = PaddleEngine(use_mock=USE_MOCK)
+engine: Optional[PaddleEngine] = None
+
+
+def get_engine() -> PaddleEngine:
+    global engine
+    if engine is None:
+        engine = PaddleEngine(use_mock=USE_MOCK)
+    return engine
 
 
 class TableCell(BaseModel):
@@ -124,7 +131,7 @@ async def parse_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="文件大小超过 50MB 限制")
     
     try:
-        result = engine.parse_pdf(content, file.filename or "unknown")
+        result = get_engine().parse_pdf(content, file.filename or "unknown")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")

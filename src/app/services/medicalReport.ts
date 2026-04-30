@@ -4,8 +4,8 @@
 
 const REMOTE_PARSER_ENDPOINTS = ["https://essentialsa-health-data-ocr.onrender.com"];
 const LOCAL_PARSER_ENDPOINTS = ["http://127.0.0.1:8000", "http://localhost:8000"];
-const PARSE_TIMEOUT_MS = 90000;
-const HEALTH_CHECK_TIMEOUT_MS = 15000;
+const PARSE_TIMEOUT_MS = 240000;
+const HEALTH_CHECK_TIMEOUT_MS = 45000;
 
 const isLocalBrowserPage = (): boolean => {
   if (typeof window === "undefined") {
@@ -121,6 +121,16 @@ const summarizeAttemptErrors = (errors: EndpointAttemptError[]): string => {
   return `OCR 服务连接失败，已尝试：${details.join("；")}`;
 };
 
+const describeFetchError = (error: unknown, timeoutMs: number): string => {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return `请求超时（已等待 ${Math.round(timeoutMs / 1000)} 秒，Render 免费实例冷启动或多页/高清报告会更慢）`;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "网络请求失败";
+};
+
 const createUploadFormData = (file: File): FormData => {
   const formData = new FormData();
   formData.append("file", file);
@@ -204,7 +214,7 @@ export async function parseMedicalReport(file: File): Promise<ParseResult> {
         throw new Error(`解析失败 (${resp.status})：${message}`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "网络请求失败";
+      const message = describeFetchError(error, PARSE_TIMEOUT_MS);
       errors.push({ endpoint, message });
     }
   }
@@ -216,8 +226,17 @@ export async function checkParserService(): Promise<ParserServiceStatus> {
   const errors: EndpointAttemptError[] = [];
   for (const endpoint of PARSER_ENDPOINTS) {
     try {
-      const resp = await fetchWithTimeout(`${endpoint}/api/health`, { method: "GET" }, HEALTH_CHECK_TIMEOUT_MS);
+      const resp = await fetchWithTimeout(`${endpoint}/api/healthz`, { method: "GET" }, HEALTH_CHECK_TIMEOUT_MS);
       if (resp.ok) {
+        const payload = (await resp.json().catch(() => null)) as { ocr_ready?: boolean; model?: string } | null;
+        if (payload?.ocr_ready === false) {
+          errors.push({
+            endpoint,
+            status: 503,
+            message: `OCR 引擎未就绪${payload.model ? `（${payload.model}）` : ""}`,
+          });
+          continue;
+        }
         return {
           online: true,
           endpoint,
@@ -229,7 +248,7 @@ export async function checkParserService(): Promise<ParserServiceStatus> {
     } catch (error) {
       errors.push({
         endpoint,
-        message: error instanceof Error ? error.message : "网络请求失败",
+        message: describeFetchError(error, HEALTH_CHECK_TIMEOUT_MS),
       });
     }
   }

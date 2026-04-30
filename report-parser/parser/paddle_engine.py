@@ -148,7 +148,7 @@ class PaddleEngine:
         if self._is_pdf(file_content, filename):
             page_images = self._render_pdf_pages(file_content)
         else:
-            image = Image.open(io.BytesIO(file_content)).convert("RGB")
+            image = self._prepare_image_for_ocr(Image.open(io.BytesIO(file_content)).convert("RGB"))
             page_images = [np.array(image)]
 
         if not page_images:
@@ -166,7 +166,8 @@ class PaddleEngine:
 
         image = Image.fromarray(page_image)
         lang = os.getenv("TESSERACT_LANG", "chi_sim+eng")
-        data = pytesseract.image_to_data(image, lang=lang, output_type=Output.DICT)
+        config = os.getenv("TESSERACT_CONFIG", "--oem 1 --psm 6")
+        data = pytesseract.image_to_data(image, lang=lang, config=config, output_type=Output.DICT)
 
         line_groups: Dict[tuple, List[Dict[str, Any]]] = {}
         for i, text in enumerate(data.get("text", [])):
@@ -227,11 +228,28 @@ class PaddleEngine:
                 image = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
                 if mode == "RGBA":
                     image = image.convert("RGB")
+                image = self._prepare_image_for_ocr(image)
                 pages.append(np.array(image))
         finally:
             doc.close()
 
         return pages
+
+    def _prepare_image_for_ocr(self, image: Image.Image) -> Image.Image:
+        """限制超大图片尺寸，避免 Tesseract 在免费实例上长时间阻塞。"""
+        max_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "2200"))
+        if max_side <= 0:
+            return image
+
+        width, height = image.size
+        current_max = max(width, height)
+        if current_max <= max_side:
+            return image
+
+        scale = max_side / current_max
+        target_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        return image.resize(target_size, resample)
 
     def _parse_single_page(self, ocr_result, page_index: int) -> Dict[str, Any]:
         """格式化单页 OCR 输出为统一结构"""

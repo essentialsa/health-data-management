@@ -3,13 +3,18 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+import logging
 import os
+import time
 
 from parser.paddle_engine import PaddleEngine, get_ocr_status
 from parser.table_extractor import extract_table_structure
 from parser.date_extractor import extract_report_date
 
 app = FastAPI(title="Medical Report Parser", version="1.0.0")
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+logger = logging.getLogger("medical-report-parser")
 
 # CORS - 默认允许本地开发 + 已部署前端域名。
 # 若需要允许任意来源可设置 ALLOWED_ORIGINS=*（此时会自动关闭 credentials）。
@@ -115,6 +120,7 @@ async def service_health_check():
 @app.post("/api/parse", response_model=ParseResponse)
 async def parse_report(file: UploadFile = File(...)):
     """解析体检报告 PDF/图片"""
+    started_at = time.perf_counter()
     allowed_types = [
         "application/pdf",
         "image/jpeg",
@@ -135,9 +141,29 @@ async def parse_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="文件大小超过 50MB 限制")
     
     try:
+        logger.info(
+            "ocr_parse_start filename=%s content_type=%s size_bytes=%d engine=%s",
+            file.filename or "unknown",
+            content_type or "unknown",
+            len(content),
+            get_ocr_status(USE_MOCK)["engine"],
+        )
         result = get_engine().parse_pdf(content, file.filename or "unknown")
+        logger.info(
+            "ocr_parse_done filename=%s success=%s elapsed_sec=%.2f page_count=%s indicator_count=%s",
+            file.filename or "unknown",
+            result.get("success"),
+            time.perf_counter() - started_at,
+            result.get("pageCount"),
+            len(result.get("indicators", [])),
+        )
         return result
     except Exception as e:
+        logger.exception(
+            "ocr_parse_exception filename=%s elapsed_sec=%.2f",
+            file.filename or "unknown",
+            time.perf_counter() - started_at,
+        )
         raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
 
 

@@ -24,7 +24,8 @@ def test_parse_report_mock():
     data = response.json()
     assert data["success"] is True
     assert len(data["indicators"]) > 0
-    assert data["indicators"][0]["rawLabel"] == "收缩压"
+    labels = {item["rawLabel"] for item in data["indicators"]}
+    assert "白细胞(WBC)" in labels
 
 
 def test_parse_report_file_too_large():

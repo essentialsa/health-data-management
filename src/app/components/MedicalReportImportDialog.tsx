@@ -75,17 +75,12 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
   const handleParse = async () => {
     if (!file) return;
-    const latestStatus = await checkService();
-    if (!latestStatus.online) {
-      // Render 免费实例冷启动时健康检查可能先超时，继续直接解析可触发实例启动。
-      setError(null);
-    }
     setParsing(true);
     setProgress(0);
     setTab("preview");
 
-    // 模拟进度
-    const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 15, 90)), 500);
+    // OCR 解析耗时主要取决于 Render 冷启动和报告页数，进度只表示等待状态。
+    const timer = setInterval(() => setProgress(p => Math.min(p + (p < 70 ? Math.random() * 4 : Math.random() * 1.2), 92)), 1200);
 
     try {
       const r = await parseMedicalReport(file);
@@ -258,7 +253,7 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>取消</Button>
-              <Button disabled={!file || serviceChecking || parsing} onClick={handleParse}>
+              <Button disabled={!file || parsing} onClick={handleParse}>
                 {parsing ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> 解析中...</> : "开始解析"}
               </Button>
             </div>
@@ -271,6 +266,9 @@ export function MedicalReportImportDialog({ onImportRecords, existingCategories 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" /> 正在解析体检报告...
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  首次使用需要唤醒云端 OCR 服务，多页或高清报告可能需要 1-3 分钟。
+                </p>
                 <Progress value={progress} />
               </div>
             )}

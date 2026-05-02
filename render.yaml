@@ -16,11 +16,7 @@ services:
       - key: USE_MOCK
         value: "false"
       - key: OCR_ENGINE
-        value: tesseract
-      - key: TESSERACT_LANG
-        value: chi_sim+eng
-      - key: TESSERACT_CONFIG
-        value: "--oem 1 --psm 6"
+        value: paddle
       - key: OCR_MAX_IMAGE_SIDE
         value: "2200"
       - key: LOG_LEVEL

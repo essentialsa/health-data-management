@@ -34,16 +34,13 @@ except ImportError:
 
 
 def get_ocr_status(use_mock: bool = False) -> Dict[str, Any]:
-    requested_engine = os.getenv("OCR_ENGINE", "tesseract").lower()
+    requested_engine = os.getenv("OCR_ENGINE", "paddle").strip().lower()
     if use_mock:
         return {"engine": "mock", "available": True, "error": None}
 
-    if requested_engine in ("tesseract", "tesseract-ocr"):
-        return {
-            "engine": "tesseract",
-            "available": TESSERACT_AVAILABLE,
-            "error": TESSERACT_IMPORT_ERROR,
-        }
+    # 兼容旧配置：线上曾使用 tesseract，现统一收敛到 paddle，避免继续走低精度路径。
+    if requested_engine in ("tesseract", "tesseract-ocr", "", "default"):
+        requested_engine = "paddle"
 
     if requested_engine == "paddle":
         return {
@@ -53,12 +50,10 @@ def get_ocr_status(use_mock: bool = False) -> Dict[str, Any]:
         }
 
     if requested_engine == "auto":
-        if TESSERACT_AVAILABLE:
-            return {"engine": "tesseract", "available": True, "error": None}
         return {
             "engine": "paddle",
             "available": PADDLE_AVAILABLE,
-            "error": PADDLE_IMPORT_ERROR or TESSERACT_IMPORT_ERROR,
+            "error": PADDLE_IMPORT_ERROR,
         }
 
     return {

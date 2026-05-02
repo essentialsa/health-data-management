@@ -1,6 +1,10 @@
 """API 测试"""
+import os
 import pytest
 from fastapi.testclient import TestClient
+
+os.environ["USE_MOCK"] = "true"
+
 from main import app
 
 client = TestClient(app)

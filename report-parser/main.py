@@ -55,6 +55,21 @@ def get_engine() -> PaddleEngine:
     return engine
 
 
+@app.on_event("startup")
+async def warmup_ocr_engine():
+    """服务启动时预热 OCR，确保 Render 只上线可用实例。"""
+    if USE_MOCK:
+        logger.info("ocr_engine_warmup_skip mock_mode=true")
+        return
+
+    try:
+        loaded_engine = get_engine()
+        logger.info("ocr_engine_warmup_done engine=%s", loaded_engine.backend)
+    except Exception as exc:
+        logger.exception("ocr_engine_warmup_failed: %s", exc)
+        raise
+
+
 class TableCell(BaseModel):
     row: int
     col: int
@@ -108,11 +123,31 @@ async def health_check():
 
 @app.get("/api/healthz")
 async def service_health_check():
-    """Render 部署健康检查：只确认 Web 进程已启动。"""
+    """Render 部署健康检查：确认 OCR 引擎依赖与初始化都就绪。"""
     ocr_status = get_ocr_status(USE_MOCK)
+    if not ocr_status["available"]:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "OCR 引擎依赖不可用",
+                "engine": ocr_status["engine"],
+                "import_error": ocr_status["error"],
+            },
+        )
+    try:
+        get_engine()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "OCR 引擎初始化失败",
+                "engine": ocr_status["engine"],
+                "error": str(exc),
+            },
+        ) from exc
     return {
         "status": "ok",
-        "ocr_ready": ocr_status["available"],
+        "ocr_ready": True,
         "model": ocr_status["engine"],
     }
 

@@ -4808,7 +4808,7 @@ export default function App() {
     }
   }
 
-  const actionTriggerClassName = "h-10 w-[136px] flex-none px-4 justify-center whitespace-nowrap text-sm";
+  const actionTriggerClassName = "h-10 w-full px-4 justify-center whitespace-nowrap text-sm";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">
@@ -4838,8 +4838,7 @@ export default function App() {
             )}
           </div>
           
-          <div className="w-full overflow-x-auto pb-2">
-            <div className="flex w-max min-w-full flex-nowrap items-center gap-3">
+          <div className="grid w-full grid-cols-2 items-center gap-3 pb-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               <AddRecordDialog
                 onAddRecord={handleAddRecord}
                 indicatorCategories={indicatorCategories}
@@ -4885,11 +4884,6 @@ export default function App() {
                 onExport={handleExport}
                 triggerClassName={actionTriggerClassName}
               />
-              <ClearAllDataDialog
-                disabled={records.length === 0}
-                onConfirm={handleClearAllRecords}
-                triggerClassName={actionTriggerClassName}
-              />
               <CloudSyncDialog
                 provider={cloudProvider}
                 autoSync={cloudAutoSync}
@@ -4924,7 +4918,11 @@ export default function App() {
                   </>
                 )}
               </Button>
-            </div>
+              <ClearAllDataDialog
+                disabled={records.length === 0}
+                onConfirm={handleClearAllRecords}
+                triggerClassName={actionTriggerClassName}
+              />
           </div>
         </div>
 

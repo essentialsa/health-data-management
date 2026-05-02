@@ -1,6 +1,6 @@
-# 🏥 Health Data Management Site
+# 🏥 PersonalHealthHub
 
-> 健康数据管理系统 — 支持体检报告 OCR 识别导入、数据可视化、云同步
+> 个人健康管理平台 — 体检报告 OCR 识别导入、健康数据可视化、云端同步
 
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
@@ -68,8 +68,8 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/essentialsa/health-data-management.git
-cd health-data-management
+git clone https://github.com/essentialsa/PersonalHealthHub.git
+cd PersonalHealthHub
 
 # 安装依赖
 pnpm install

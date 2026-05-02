@@ -33,6 +33,13 @@ except ImportError:
     PDF_RENDER_AVAILABLE = False
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_ocr_status(use_mock: bool = False) -> Dict[str, Any]:
     requested_engine = os.getenv("OCR_ENGINE", "paddle").strip().lower()
     if use_mock:
@@ -77,7 +84,24 @@ class PaddleEngine:
         if self.backend == "paddle":
             if not PADDLE_AVAILABLE:
                 raise RuntimeError(f"PaddleOCR 不可用: {PADDLE_IMPORT_ERROR}")
-            self._ocr = PaddleOCR(use_angle_cls=True, lang='ch', show_log=False)
+
+            # Render 免费实例在部分 CPU 指令集上会触发 SIGILL，
+            # 这里关闭 IR 优化并限制线程，优先保证 PaddleOCR 可用性。
+            ocr_version = os.getenv("PADDLE_OCR_VERSION", "PP-OCRv4")
+            ir_optim = _env_bool("PADDLE_IR_OPTIM", False)
+            enable_mkldnn = _env_bool("PADDLE_ENABLE_MKLDNN", False)
+            cpu_threads = max(1, int(os.getenv("PADDLE_CPU_THREADS", "1")))
+
+            self._ocr = PaddleOCR(
+                use_angle_cls=True,
+                lang="ch",
+                show_log=False,
+                use_gpu=False,
+                ir_optim=ir_optim,
+                enable_mkldnn=enable_mkldnn,
+                cpu_threads=cpu_threads,
+                ocr_version=ocr_version,
+            )
             return
 
         if self.backend == "tesseract":

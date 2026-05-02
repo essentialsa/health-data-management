@@ -17,6 +17,14 @@ services:
         value: "false"
       - key: OCR_ENGINE
         value: paddle
+      - key: PADDLE_IR_OPTIM
+        value: "false"
+      - key: PADDLE_ENABLE_MKLDNN
+        value: "false"
+      - key: PADDLE_CPU_THREADS
+        value: "1"
+      - key: PADDLE_OCR_VERSION
+        value: PP-OCRv4
       - key: OCR_MAX_IMAGE_SIDE
         value: "2200"
       - key: LOG_LEVEL

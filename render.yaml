@@ -24,7 +24,11 @@ services:
       - key: PADDLE_CPU_THREADS
         value: "1"
       - key: PADDLE_OCR_VERSION
-        value: PP-OCRv4
+        value: PP-OCRv2
+      - key: PADDLE_REC_ALGORITHM
+        value: CRNN
+      - key: PADDLE_REC_IMAGE_SHAPE
+        value: 3,32,320
       - key: OCR_MAX_IMAGE_SIDE
         value: "2200"
       - key: LOG_LEVEL

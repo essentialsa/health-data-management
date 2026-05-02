@@ -64,7 +64,11 @@ async def warmup_ocr_engine():
 
     try:
         loaded_engine = get_engine()
-        logger.info("ocr_engine_warmup_done engine=%s", loaded_engine.backend)
+        logger.info(
+            "ocr_engine_warmup_done engine=%s config=%s",
+            loaded_engine.backend,
+            loaded_engine.runtime_config,
+        )
     except Exception as exc:
         logger.exception("ocr_engine_warmup_failed: %s", exc)
         raise
@@ -113,11 +117,13 @@ async def health_check():
                 "import_error": ocr_status["error"],
             },
         )
+    loaded_engine = get_engine()
     return {
         "status": "ok",
         "model": ocr_status["engine"],
         "mock_mode": USE_MOCK,
         "ocr_ready": ocr_ready,
+        "engine_config": loaded_engine.runtime_config if loaded_engine else {},
     }
 
 
@@ -135,7 +141,7 @@ async def service_health_check():
             },
         )
     try:
-        get_engine()
+        loaded_engine = get_engine()
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -149,6 +155,7 @@ async def service_health_check():
         "status": "ok",
         "ocr_ready": True,
         "model": ocr_status["engine"],
+        "engine_config": loaded_engine.runtime_config if loaded_engine else {},
     }
 
 

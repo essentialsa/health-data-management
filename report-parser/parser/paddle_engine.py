@@ -1,4 +1,4 @@
-"""PaddleOCR 引擎封装 - PaddleOCR 2.7.3 + PP-OCRv4"""
+"""PaddleOCR 引擎封装 - PaddleOCR 2.7.3（Render 默认 PP-OCRv2）"""
 import io
 import os
 import re
@@ -76,6 +76,7 @@ class PaddleEngine:
     def __init__(self, use_mock: bool = False):
         self.use_mock = use_mock
         self._ocr = None
+        self.runtime_config: Dict[str, Any] = {}
         self.backend = "mock" if use_mock else get_ocr_status(use_mock)["engine"]
 
         if use_mock:
@@ -87,21 +88,41 @@ class PaddleEngine:
 
             # Render 免费实例在部分 CPU 指令集上会触发 SIGILL，
             # 这里关闭 IR 优化并限制线程，优先保证 PaddleOCR 可用性。
-            ocr_version = os.getenv("PADDLE_OCR_VERSION", "PP-OCRv4")
+            ocr_version = os.getenv("PADDLE_OCR_VERSION", "PP-OCRv2").strip() or "PP-OCRv2"
             ir_optim = _env_bool("PADDLE_IR_OPTIM", False)
             enable_mkldnn = _env_bool("PADDLE_ENABLE_MKLDNN", False)
             cpu_threads = max(1, int(os.getenv("PADDLE_CPU_THREADS", "1")))
+            use_angle_cls = _env_bool("PADDLE_USE_ANGLE_CLS", True)
 
-            self._ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang="ch",
-                show_log=False,
-                use_gpu=False,
-                ir_optim=ir_optim,
-                enable_mkldnn=enable_mkldnn,
-                cpu_threads=cpu_threads,
-                ocr_version=ocr_version,
-            )
+            # PP-OCRv2 在低规格 CPU 上兼容性更高，默认使用 CRNN 并适配 rec_image_shape。
+            is_legacy_v2 = "v2" in ocr_version.lower()
+            rec_algorithm = os.getenv("PADDLE_REC_ALGORITHM", "CRNN" if is_legacy_v2 else "").strip()
+            rec_image_shape = os.getenv("PADDLE_REC_IMAGE_SHAPE", "3,32,320" if is_legacy_v2 else "3,48,320").strip()
+
+            paddle_kwargs: Dict[str, Any] = {
+                "use_angle_cls": use_angle_cls,
+                "lang": "ch",
+                "show_log": False,
+                "use_gpu": False,
+                "ir_optim": ir_optim,
+                "enable_mkldnn": enable_mkldnn,
+                "cpu_threads": cpu_threads,
+                "ocr_version": ocr_version,
+                "rec_image_shape": rec_image_shape,
+            }
+            if rec_algorithm:
+                paddle_kwargs["rec_algorithm"] = rec_algorithm
+
+            self._ocr = PaddleOCR(**paddle_kwargs)
+            self.runtime_config = {
+                "ocr_version": ocr_version,
+                "rec_algorithm": rec_algorithm or "default",
+                "rec_image_shape": rec_image_shape,
+                "use_angle_cls": use_angle_cls,
+                "ir_optim": ir_optim,
+                "enable_mkldnn": enable_mkldnn,
+                "cpu_threads": cpu_threads,
+            }
             return
 
         if self.backend == "tesseract":

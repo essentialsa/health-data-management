@@ -6,6 +6,10 @@ import { cn } from "@/app/components/ui/utils";
 import { ClipboardList, Copy, Download, Sparkles } from "lucide-react";
 import type { HealthRecord, IndicatorCategory, IndicatorItem } from "@/app/components/AddRecordDialog";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 type SelectionMode = "single" | "multiple";
 
 interface ConsultationBriefDialogProps {
@@ -18,6 +22,43 @@ type NumericRange = {
   min: number;
   max: number;
 };
+
+type ReportIndicatorRow = {
+  categoryName: string;
+  indicatorName: string;
+  latestDate: string;
+  latestValue: string;
+  unit: string;
+  referenceRange: string;
+  trend: string;
+  status: string;
+  recentValues: string;
+  abnormal: boolean;
+};
+
+type ReportSection = {
+  categoryId: string;
+  categoryName: string;
+  rows: ReportIndicatorRow[];
+};
+
+type ConsultationReport = {
+  title: string;
+  generatedAt: string;
+  firstDate: string;
+  lastDate: string;
+  categoryNames: string[];
+  recordCount: number;
+  indicatorCount: number;
+  abnormalCount: number;
+  sections: ReportSection[];
+  abnormalItems: ReportIndicatorRow[];
+  questions: string[];
+};
+
+// ---------------------------------------------------------------------------
+// Utility helpers (preserved)
+// ---------------------------------------------------------------------------
 
 const formatNumber = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -81,27 +122,51 @@ const describeRangeStatus = (item: IndicatorItem, latestValue: number) => {
   return `处于参考范围(${item.referenceRange})`;
 };
 
-const buildConsultationBrief = ({
+// ---------------------------------------------------------------------------
+// HTML escape helper
+// ---------------------------------------------------------------------------
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+// ---------------------------------------------------------------------------
+// Report builder
+// ---------------------------------------------------------------------------
+
+const questionLines = [
+  "近 2 周是否出现乏力、头晕、胸闷、睡眠变化等不适，出现时间与指标波动是否一致？",
+  "近期饮食结构、饮酒、运动频率、体重变化与既往相比有什么明显改变？",
+  "当前是否正在服用影响相关指标的药物或保健品，是否需要调整用药或复查周期？",
+];
+
+const buildConsultationReport = ({
   selectedCategories,
   records,
 }: {
   selectedCategories: IndicatorCategory[];
   records: HealthRecord[];
-}) => {
+}): ConsultationReport | null => {
   const selectedIndicatorIds = selectedCategories.flatMap(category => category.items.map(item => item.id));
   const scopedRecords = records
     .filter(record => selectedIndicatorIds.includes(record.indicatorType))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   if (scopedRecords.length === 0) {
-    return "当前所选指标种类暂无可用数据，请先导入或录入检验记录。";
+    return null;
   }
 
   const firstDate = scopedRecords[0].date;
   const lastDate = scopedRecords[scopedRecords.length - 1].date;
-  const summaryLines: string[] = [];
-  const detailLines: string[] = [];
-  const abnormalLines: string[] = [];
+  const generatedAt = new Date().toLocaleString("zh-CN");
+
+  const sections: ReportSection[] = [];
+  const abnormalItems: ReportIndicatorRow[] = [];
+  let indicatorCount = 0;
 
   selectedCategories.forEach(category => {
     const categoryIndicatorIds = category.items.map(item => item.id);
@@ -109,65 +174,415 @@ const buildConsultationBrief = ({
     if (categoryRecords.length === 0) {
       return;
     }
-    summaryLines.push(`- ${category.name}：${category.items.length} 项指标，${categoryRecords.length} 条记录`);
 
-    detailLines.push(`【${category.name}】`);
+    const rows: ReportIndicatorRow[] = [];
+
     category.items.forEach(item => {
       const indicatorRecords = findIndicatorRecords(scopedRecords, item.id);
       if (indicatorRecords.length === 0) {
         return;
       }
 
+      indicatorCount += 1;
       const latest = indicatorRecords[indicatorRecords.length - 1];
-      const recentPoints = indicatorRecords.slice(-6).map(record => `${record.date} ${formatNumber(record.value)}`).join("；");
+      const recent = indicatorRecords.slice(-6);
+      const recentValues = recent
+        .map(record => `${record.date}：${formatNumber(record.value)}`)
+        .join("；");
       const trend = describeTrend(indicatorRecords);
       const rangeStatus = describeRangeStatus(item, latest.value);
+      const abnormal = !!(rangeStatus && (rangeStatus.includes("高于") || rangeStatus.includes("低于")));
 
-      detailLines.push(
-        `- ${item.label}${item.unit ? `（${item.unit}）` : ""}：${recentPoints}（最新 ${formatNumber(latest.value)}，${trend}${
-          rangeStatus ? `，${rangeStatus}` : ""
-        }）`,
-      );
+      const row: ReportIndicatorRow = {
+        categoryName: category.name,
+        indicatorName: item.label,
+        latestDate: latest.date,
+        latestValue: formatNumber(latest.value),
+        unit: item.unit ?? "",
+        referenceRange: item.referenceRange ?? "",
+        trend,
+        status: rangeStatus ?? "未配置参考范围",
+        recentValues,
+        abnormal,
+      };
 
-      if (rangeStatus?.includes("高于") || rangeStatus?.includes("低于")) {
-        abnormalLines.push(`- ${category.name} / ${item.label}：${rangeStatus}，建议结合近期症状与用药史复核。`);
+      rows.push(row);
+
+      if (abnormal) {
+        abnormalItems.push(row);
       }
     });
+
+    if (rows.length > 0) {
+      sections.push({
+        categoryId: category.id,
+        categoryName: category.name,
+        rows,
+      });
+    }
   });
 
-  const questionLines = [
-    "1. 近 2 周是否出现乏力、头晕、胸闷、睡眠变化等不适，出现时间与指标波动是否一致？",
-    "2. 近期饮食结构、饮酒、运动频率、体重变化与既往相比有什么明显改变？",
-    "3. 当前是否正在服用影响相关指标的药物或保健品，是否需要调整用药或复查周期？",
-  ];
-
-  const generatedAt = new Date().toLocaleString("zh-CN");
-  return [
-    "【问诊简报】",
-    `生成时间：${generatedAt}`,
-    `覆盖日期：${firstDate} ~ ${lastDate}`,
-    `检验指标种类：${selectedCategories.map(category => category.name).join("、")}`,
-    `数据条数：${scopedRecords.length}`,
-    "",
-    "【分类概览】",
-    ...summaryLines,
-    "",
-    "【指标明细】",
-    ...detailLines,
-    "",
-    "【异常关注点】",
-    ...(abnormalLines.length > 0 ? abnormalLines : ["- 暂未发现超出参考范围的异常项，建议继续规律复查。"]),
-    "",
-    "【问诊建议问题】",
-    ...questionLines,
-  ].join("\n");
+  return {
+    title: "个人健康档案问诊报告",
+    generatedAt,
+    firstDate,
+    lastDate,
+    categoryNames: selectedCategories.map(c => c.name),
+    recordCount: scopedRecords.length,
+    indicatorCount,
+    abnormalCount: abnormalItems.length,
+    sections,
+    abnormalItems,
+    questions: [...questionLines],
+  };
 };
+
+// ---------------------------------------------------------------------------
+// Plain-text summary (for clipboard)
+// ---------------------------------------------------------------------------
+
+const buildReportPlainText = (report: ConsultationReport): string => {
+  const lines: string[] = [];
+
+  lines.push("【个人健康档案问诊报告】");
+  lines.push(`生成时间：${report.generatedAt}`);
+  lines.push(`覆盖周期：${report.firstDate} ~ ${report.lastDate}`);
+  lines.push(`指标分类：${report.categoryNames.join("、")}`);
+  lines.push(`数据条数：${report.recordCount}`);
+  lines.push(`异常指标数：${report.abnormalCount}`);
+  lines.push("");
+
+  lines.push("【异常关注项】");
+  if (report.abnormalItems.length > 0) {
+    report.abnormalItems.forEach(item => {
+      lines.push(`- ${item.categoryName} / ${item.indicatorName}：${item.status}，最近值 ${item.latestValue} ${item.unit}`);
+    });
+  } else {
+    lines.push("- 暂未发现超出参考范围的异常项，建议继续规律复查。");
+  }
+  lines.push("");
+
+  lines.push("【指标摘要】");
+  report.sections.forEach(section => {
+    lines.push(`【${section.categoryName}】`);
+    section.rows.forEach(row => {
+      const parts = [`最新 ${row.latestValue} ${row.unit}`];
+      if (row.trend && !row.trend.startsWith("样本不足")) {
+        parts.push(row.trend);
+      }
+      if (row.abnormal) {
+        parts.push(row.status);
+      }
+      lines.push(`- ${row.indicatorName}：${parts.join("，")}`);
+    });
+    lines.push("");
+  });
+
+  lines.push("【建议沟通重点】");
+  report.questions.forEach((q, i) => {
+    lines.push(`${i + 1}. ${q}`);
+  });
+
+  return lines.join("\n");
+};
+
+// ---------------------------------------------------------------------------
+// HTML report builder
+// ---------------------------------------------------------------------------
+
+const buildReportHtml = (report: ConsultationReport): string => {
+  const sectionRows = report.sections
+    .map(section => {
+      const bodyRows = section.rows
+        .map(
+          row => `
+          <tr>
+            <td>${escapeHtml(row.indicatorName)}</td>
+            <td class="numeric">${escapeHtml(row.latestValue)}</td>
+            <td>${escapeHtml(row.unit || "-")}</td>
+            <td>${escapeHtml(row.referenceRange || "-")}</td>
+            <td>${escapeHtml(row.trend)}</td>
+            <td class="${row.abnormal ? "abnormal" : ""}">${escapeHtml(row.status)}</td>
+          </tr>`,
+        )
+        .join("");
+
+      return `
+      <section class="report-section">
+        <h3>${escapeHtml(section.categoryName)}</h3>
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>指标</th>
+              <th class="numeric">最近值</th>
+              <th>单位</th>
+              <th>参考范围</th>
+              <th>趋势</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </section>`;
+    })
+    .join("");
+
+  const abnormalHtml =
+    report.abnormalItems.length > 0
+      ? `<ul>${report.abnormalItems
+          .map(
+            item =>
+              `<li>${escapeHtml(item.categoryName)} / ${escapeHtml(item.indicatorName)}：${escapeHtml(item.status)}，最近值 ${escapeHtml(item.latestValue)} ${escapeHtml(item.unit)}</li>`,
+          )
+          .join("")}</ul>`
+      : `<p>暂未发现超出参考范围的异常项，建议继续规律复查。</p>`;
+
+  const questionsHtml = report.questions.map((q, i) => `<li>${escapeHtml(q)}</li>`).join("");
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>个人健康档案问诊报告</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .report-page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 24px auto;
+      background: #fff;
+      padding: 40px 48px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .report-header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1.5px solid #222;
+    }
+
+    .report-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 4px;
+    }
+
+    .report-header .subtitle {
+      font-size: 13px;
+      color: #888;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 24px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #444;
+    }
+
+    .info-grid dt { color: #888; }
+    .info-grid dd { font-weight: 500; }
+
+    .summary-box {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .summary-box p { margin-bottom: 4px; }
+    .summary-box p:last-child { margin-bottom: 0; }
+    .summary-box strong { color: #222; }
+
+    .abnormal-section {
+      margin-bottom: 20px;
+    }
+
+    .abnormal-section h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #222;
+      margin-bottom: 8px;
+    }
+
+    .abnormal-section ul {
+      list-style: disc;
+      padding-left: 20px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .abnormal-section li {
+      margin-bottom: 4px;
+    }
+
+    .report-section {
+      margin-bottom: 20px;
+      page-break-inside: avoid;
+    }
+
+    .report-section h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #222;
+      margin-bottom: 6px;
+    }
+
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-top: 2px solid #111;
+      border-bottom: 2px solid #111;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .report-table thead {
+      border-bottom: 1.5px solid #111;
+    }
+
+    .report-table th,
+    .report-table td {
+      border: none;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    .report-table .numeric {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .report-table .abnormal {
+      color: #b91c1c;
+    }
+
+    .questions-section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #ddd;
+    }
+
+    .questions-section h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #222;
+      margin-bottom: 8px;
+    }
+
+    .questions-section ol {
+      padding-left: 20px;
+      font-size: 13px;
+      color: #444;
+    }
+
+    .questions-section li {
+      margin-bottom: 6px;
+    }
+
+    .report-footer {
+      margin-top: 32px;
+      padding-top: 12px;
+      border-top: 1px solid #ddd;
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+    }
+
+    @page {
+      size: A4;
+      margin: 16mm;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .report-page {
+        width: auto;
+        min-height: auto;
+        box-shadow: none;
+        padding: 0;
+      }
+
+      .report-section {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="report-page">
+    <div class="report-header">
+      <h1>${escapeHtml(report.title)}</h1>
+      <div class="subtitle">Personal Health Consultation Report</div>
+    </div>
+
+    <dl class="info-grid">
+      <dt>生成时间</dt>
+      <dd>${escapeHtml(report.generatedAt)}</dd>
+      <dt>覆盖周期</dt>
+      <dd>${escapeHtml(report.firstDate)} ~ ${escapeHtml(report.lastDate)}</dd>
+      <dt>指标分类</dt>
+      <dd>${escapeHtml(report.categoryNames.join("、"))}</dd>
+      <dt>数据条数</dt>
+      <dd>${report.recordCount}</dd>
+    </dl>
+
+    <div class="summary-box">
+      <p>纳入指标数：<strong>${report.indicatorCount}</strong></p>
+      <p>异常指标数：<strong>${report.abnormalCount}</strong></p>
+      <p>最近检测日期：<strong>${escapeHtml(report.lastDate)}</strong></p>
+      <p>本报告基于用户录入或导入的健康指标数据自动整理，仅用于问诊沟通辅助，不替代医生诊断。</p>
+    </div>
+
+    <div class="abnormal-section">
+      <h2>异常关注项</h2>
+      ${abnormalHtml}
+    </div>
+
+    ${sectionRows}
+
+    <div class="questions-section">
+      <h2>建议沟通重点</h2>
+      <ol>${questionsHtml}</ol>
+    </div>
+
+    <div class="report-footer">
+      本报告由 PersonalHealthHub 自动生成 &mdash; ${escapeHtml(report.generatedAt)}
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export function ConsultationBriefDialog({ categories, records, triggerClassName }: ConsultationBriefDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("multiple");
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
-  const [briefContent, setBriefContent] = useState("");
+  const [report, setReport] = useState<ConsultationReport | null>(null);
+  const [plainText, setPlainText] = useState("");
+  const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
 
   const categoriesWithData = useMemo(() => {
@@ -183,7 +598,9 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
   const resetDialog = () => {
     setSelectionMode("multiple");
     setSelectedCategoryIds([]);
-    setBriefContent("");
+    setReport(null);
+    setPlainText("");
+    setMessage("");
     setCopied(false);
   };
 
@@ -210,22 +627,38 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
     }
   };
 
-  const handleGenerateBrief = () => {
+  const handleGenerateReport = () => {
     if (selectedCategories.length === 0) {
-      setBriefContent("请先选择至少一个检验指标种类。");
+      setMessage("请先选择至少一个检验指标种类。");
+      setReport(null);
+      setPlainText("");
       return;
     }
-    const next = buildConsultationBrief({ selectedCategories, records });
-    setBriefContent(next);
+
+    const nextReport = buildConsultationReport({
+      selectedCategories,
+      records,
+    });
+
+    if (!nextReport) {
+      setMessage("当前所选指标种类暂无可用数据，请先导入或录入检验记录。");
+      setReport(null);
+      setPlainText("");
+      return;
+    }
+
+    setReport(nextReport);
+    setPlainText(buildReportPlainText(nextReport));
+    setMessage("");
     setCopied(false);
   };
 
   const handleCopy = async () => {
-    if (!briefContent) {
+    if (!plainText) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(briefContent);
+      await navigator.clipboard.writeText(plainText);
       setCopied(true);
       setTimeout(() => {
         setCopied(false);
@@ -235,19 +668,36 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
     }
   };
 
-  const handleDownload = () => {
-    if (!briefContent) {
+  const handleDownloadHtml = () => {
+    if (!report) {
       return;
     }
-    const blob = new Blob([briefContent], { type: "text/plain;charset=utf-8;" });
+    const html = buildReportHtml(report);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `问诊简报_${new Date().toISOString().slice(0, 10)}.txt`;
+    link.download = `个人健康档案问诊报告_${new Date().toISOString().slice(0, 10)}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handlePrint = () => {
+    if (!report) {
+      return;
+    }
+    const html = buildReportHtml(report);
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   return (
@@ -334,27 +784,146 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" onClick={handleGenerateBrief} disabled={categoriesWithData.length === 0}>
-              生成简报
+            <Button type="button" onClick={handleGenerateReport} disabled={categoriesWithData.length === 0}>
+              生成报告
             </Button>
-            <Button type="button" variant="outline" onClick={handleCopy} disabled={!briefContent}>
+            <Button type="button" variant="outline" onClick={handleCopy} disabled={!plainText}>
               <Copy className="w-4 h-4" />
-              {copied ? "已复制" : "复制简报"}
+              {copied ? "已复制" : "复制摘要"}
             </Button>
-            <Button type="button" variant="outline" onClick={handleDownload} disabled={!briefContent}>
+            <Button type="button" variant="outline" onClick={handleDownloadHtml} disabled={!report}>
               <Download className="w-4 h-4" />
-              下载 TXT
+              下载 HTML
+            </Button>
+            <Button type="button" variant="outline" onClick={handlePrint} disabled={!report}>
+              打印 / 导出 PDF
             </Button>
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-700">简报预览</div>
-            <textarea
-              value={briefContent}
-              placeholder="点击“生成简报”后在此查看内容"
-              readOnly
-              className="w-full min-h-[320px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm leading-6 text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            />
+            <div className="text-sm font-medium text-gray-700">报告预览</div>
+
+            {!report && (
+              <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
+                {message || "点击\u201C生成报告\u201D后在此查看档案式问诊报告"}
+              </div>
+            )}
+
+            {report && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="mx-auto max-w-[760px] bg-white px-8 py-8 text-gray-900 shadow-sm">
+                  {/* Title */}
+                  <div className="text-center pb-4 mb-4 border-b border-gray-300">
+                    <h2 className="text-xl font-bold text-gray-900">{report.title}</h2>
+                    <p className="text-xs text-gray-400 mt-1">Personal Health Consultation Report</p>
+                  </div>
+
+                  {/* Basic info */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm mb-4">
+                    <div>
+                      <span className="text-gray-400">生成时间：</span>
+                      <span className="font-medium">{report.generatedAt}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">覆盖周期：</span>
+                      <span className="font-medium">
+                        {report.firstDate} ~ {report.lastDate}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">指标分类：</span>
+                      <span className="font-medium">{report.categoryNames.join("、")}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">数据条数：</span>
+                      <span className="font-medium">{report.recordCount}</span>
+                    </div>
+                  </div>
+
+                  {/* Summary */}
+                  <div className="rounded-md bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 mb-4">
+                    <p>
+                      纳入指标数：<strong className="text-gray-900">{report.indicatorCount}</strong>
+                    </p>
+                    <p>
+                      异常指标数：<strong className="text-gray-900">{report.abnormalCount}</strong>
+                    </p>
+                    <p>
+                      最近检测日期：<strong className="text-gray-900">{report.lastDate}</strong>
+                    </p>
+                    <p className="mt-1 text-gray-400 text-xs">
+                      本报告基于用户录入或导入的健康指标数据自动整理，仅用于问诊沟通辅助，不替代医生诊断。
+                    </p>
+                  </div>
+
+                  {/* Abnormal items */}
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">异常关注项</h3>
+                    {report.abnormalItems.length > 0 ? (
+                      <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
+                        {report.abnormalItems.map((item, idx) => (
+                          <li key={idx}>
+                            {item.categoryName} / {item.indicatorName}：{item.status}，最近值 {item.latestValue} {item.unit}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-500">暂未发现超出参考范围的异常项，建议继续规律复查。</p>
+                    )}
+                  </div>
+
+                  {/* Indicator sections with three-line tables */}
+                  {report.sections.map(section => (
+                    <section key={section.categoryId} className="mt-6">
+                      <h3 className="text-base font-semibold text-gray-900">{section.categoryName}</h3>
+
+                      <table className="mt-2 w-full border-collapse border-t-2 border-b-2 border-gray-900 text-sm">
+                        <thead className="border-b border-gray-900">
+                          <tr>
+                            <th className="py-2 pr-3 text-left font-medium">指标</th>
+                            <th className="py-2 px-3 text-right font-medium">最近值</th>
+                            <th className="py-2 px-3 text-left font-medium">单位</th>
+                            <th className="py-2 px-3 text-left font-medium">参考范围</th>
+                            <th className="py-2 px-3 text-left font-medium">趋势</th>
+                            <th className="py-2 pl-3 text-left font-medium">状态</th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {section.rows.map(row => (
+                            <tr key={`${section.categoryId}_${row.indicatorName}`}>
+                              <td className="py-2 pr-3">{row.indicatorName}</td>
+                              <td className="py-2 px-3 text-right tabular-nums">{row.latestValue}</td>
+                              <td className="py-2 px-3">{row.unit || "-"}</td>
+                              <td className="py-2 px-3">{row.referenceRange || "-"}</td>
+                              <td className="py-2 px-3">{row.trend}</td>
+                              <td
+                                className={cn(
+                                  "py-2 pl-3",
+                                  row.abnormal ? "text-red-700" : "text-gray-700",
+                                )}
+                              >
+                                {row.status || "未配置参考范围"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </section>
+                  ))}
+
+                  {/* Questions */}
+                  <div className="mt-8 pt-4 border-t border-gray-200">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">建议沟通重点</h3>
+                    <ol className="list-decimal pl-5 text-sm text-gray-600 space-y-1.5">
+                      {report.questions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

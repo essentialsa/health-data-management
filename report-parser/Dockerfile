@@ -11,6 +11,9 @@ RUN apt-get update \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python -c "from pathlib import Path; import paddleocr; utility = Path(paddleocr.__file__).resolve().parent / 'tools' / 'infer' / 'utility.py'; src = utility.read_text(encoding='utf-8'); old = 'config.switch_ir_optim(True)'; new = 'config.switch_ir_optim(False)'; \
+assert old in src, 'paddleocr utility.py patch target not found'; \
+utility.write_text(src.replace(old, new), encoding='utf-8')"
 
 COPY . .
 

@@ -34,15 +34,15 @@ services:
       - key: PADDLE_REC_IMAGE_SHAPE
         value: 3,32,320
       - key: PADDLE_DET_LIMIT_SIDE_LEN
-        value: "960"
+        value: "736"
       - key: PADDLE_REC_BATCH_NUM
         value: "1"
       - key: PADDLE_CLS_BATCH_NUM
         value: "1"
       - key: OCR_MAX_IMAGE_SIDE
-        value: "1280"
+        value: "960"
       - key: OCR_PDF_RENDER_SCALE
-        value: "1.2"
+        value: "1.0"
       - key: LOG_LEVEL
         value: INFO
       - key: ALLOWED_ORIGINS

@@ -88,8 +88,8 @@ class PaddleEngine:
         self.runtime_config: Dict[str, Any] = {}
         self.backend = "mock" if use_mock else get_ocr_status(use_mock)["engine"]
         self.use_angle_cls = False
-        self.max_image_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "1280"))
-        self.pdf_render_scale = max(1.0, float(os.getenv("OCR_PDF_RENDER_SCALE", "1.2")))
+        self.max_image_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "960"))
+        self.pdf_render_scale = max(1.0, float(os.getenv("OCR_PDF_RENDER_SCALE", "1.0")))
 
         if use_mock:
             return
@@ -104,7 +104,7 @@ class PaddleEngine:
             ir_optim = _env_bool("PADDLE_IR_OPTIM", False)
             enable_mkldnn = _env_bool("PADDLE_ENABLE_MKLDNN", False)
             cpu_threads = max(1, int(os.getenv("PADDLE_CPU_THREADS", "1")))
-            det_limit_side_len = max(320, int(os.getenv("PADDLE_DET_LIMIT_SIDE_LEN", "960")))
+            det_limit_side_len = max(320, int(os.getenv("PADDLE_DET_LIMIT_SIDE_LEN", "736")))
             rec_batch_num = max(1, int(os.getenv("PADDLE_REC_BATCH_NUM", "1")))
             cls_batch_num = max(1, int(os.getenv("PADDLE_CLS_BATCH_NUM", "1")))
             # Render free(512Mi) 在加载 det/rec/cls 三套模型时容易 OOM。

@@ -15,6 +15,8 @@ services:
     envVars:
       - key: USE_MOCK
         value: "false"
+      - key: OCR_WARMUP_ON_STARTUP
+        value: "false"
       - key: OCR_ENGINE
         value: paddle
       - key: PADDLE_IR_OPTIM

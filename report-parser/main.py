@@ -6,6 +6,7 @@ from typing import List, Optional
 import logging
 import os
 import time
+from threading import Lock
 
 from parser.paddle_engine import PaddleEngine, get_ocr_status
 from parser.table_extractor import extract_table_structure
@@ -45,28 +46,37 @@ app.add_middleware(
 
 # 初始化引擎（默认使用真实 PaddleOCR）
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
+OCR_WARMUP_ON_STARTUP = os.getenv("OCR_WARMUP_ON_STARTUP", "false").lower() == "true"
 engine: Optional[PaddleEngine] = None
+engine_lock = Lock()
 
 
 def get_engine() -> PaddleEngine:
     global engine
     if engine is None:
-        engine = PaddleEngine(use_mock=USE_MOCK)
+        with engine_lock:
+            if engine is None:
+                engine = PaddleEngine(use_mock=USE_MOCK)
     return engine
 
 
 @app.on_event("startup")
 async def warmup_ocr_engine():
-    """服务启动时预热 OCR，确保 Render 只上线可用实例。"""
+    """按需预热 OCR；线上默认关闭，避免健康检查阶段触发重型初始化。"""
     if USE_MOCK:
         logger.info("ocr_engine_warmup_skip mock_mode=true")
         return
+    if not OCR_WARMUP_ON_STARTUP:
+        logger.info("ocr_engine_warmup_skip startup_warmup=false")
+        return
 
     try:
+        warmup_started_at = time.perf_counter()
         loaded_engine = get_engine()
         logger.info(
-            "ocr_engine_warmup_done engine=%s config=%s",
+            "ocr_engine_warmup_done engine=%s elapsed_sec=%.2f config=%s",
             loaded_engine.backend,
+            time.perf_counter() - warmup_started_at,
             loaded_engine.runtime_config,
         )
     except Exception as exc:
@@ -117,19 +127,42 @@ async def health_check():
                 "import_error": ocr_status["error"],
             },
         )
-    loaded_engine = get_engine()
     return {
         "status": "ok",
         "model": ocr_status["engine"],
         "mock_mode": USE_MOCK,
         "ocr_ready": ocr_ready,
-        "engine_config": loaded_engine.runtime_config if loaded_engine else {},
+        "engine_initialized": engine is not None,
+        "startup_warmup_enabled": OCR_WARMUP_ON_STARTUP,
+        "engine_config": engine.runtime_config if engine else {},
     }
 
 
 @app.get("/api/healthz")
 async def service_health_check():
-    """Render 部署健康检查：确认 OCR 引擎依赖与初始化都就绪。"""
+    """Render 健康检查只验证进程存活和 OCR 依赖可导入，不触发模型初始化。"""
+    ocr_status = get_ocr_status(USE_MOCK)
+    if not ocr_status["available"]:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "OCR 引擎依赖不可用",
+                "engine": ocr_status["engine"],
+                "import_error": ocr_status["error"],
+            },
+        )
+    return {
+        "status": "ok",
+        "ocr_ready": True,
+        "model": ocr_status["engine"],
+        "engine_initialized": engine is not None,
+        "startup_warmup_enabled": OCR_WARMUP_ON_STARTUP,
+    }
+
+
+@app.get("/api/ocr-readyz")
+async def ocr_ready_check():
+    """手动深度检查：显式初始化 OCR 引擎，仅用于排障，不给 Render 健康检查调用。"""
     ocr_status = get_ocr_status(USE_MOCK)
     if not ocr_status["available"]:
         raise HTTPException(
@@ -141,6 +174,7 @@ async def service_health_check():
             },
         )
     try:
+        init_started_at = time.perf_counter()
         loaded_engine = get_engine()
     except Exception as exc:
         raise HTTPException(
@@ -155,6 +189,8 @@ async def service_health_check():
         "status": "ok",
         "ocr_ready": True,
         "model": ocr_status["engine"],
+        "engine_initialized": True,
+        "init_elapsed_sec": round(time.perf_counter() - init_started_at, 2),
         "engine_config": loaded_engine.runtime_config if loaded_engine else {},
     }
 

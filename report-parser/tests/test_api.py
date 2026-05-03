@@ -15,6 +15,16 @@ def test_health_check():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+    assert data["engine_initialized"] is False
+
+
+def test_healthz_is_lightweight():
+    response = client.get("/api/healthz")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["ocr_ready"] is True
+    assert data["engine_initialized"] is False
 
 
 def test_parse_report_mock():

@@ -40,6 +40,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _resolve_model_dir(env_name: str, default_path: str) -> Optional[str]:
+    configured = os.getenv(env_name, "").strip()
+    candidate = configured or default_path
+    if candidate and os.path.isdir(candidate):
+        return candidate
+    return None
+
+
 def get_ocr_status(use_mock: bool = False) -> Dict[str, Any]:
     requested_engine = os.getenv("OCR_ENGINE", "paddle").strip().lower()
     if use_mock:
@@ -98,6 +106,18 @@ class PaddleEngine:
             is_legacy_v2 = "v2" in ocr_version.lower()
             rec_algorithm = os.getenv("PADDLE_REC_ALGORITHM", "CRNN" if is_legacy_v2 else "").strip()
             rec_image_shape = os.getenv("PADDLE_REC_IMAGE_SHAPE", "3,32,320" if is_legacy_v2 else "3,48,320").strip()
+            det_model_dir = _resolve_model_dir(
+                "PADDLE_DET_MODEL_DIR",
+                "/opt/paddleocr/models/ch_PP-OCRv2_det_infer",
+            )
+            rec_model_dir = _resolve_model_dir(
+                "PADDLE_REC_MODEL_DIR",
+                "/opt/paddleocr/models/ch_PP-OCRv2_rec_infer",
+            )
+            cls_model_dir = _resolve_model_dir(
+                "PADDLE_CLS_MODEL_DIR",
+                "/opt/paddleocr/models/ch_ppocr_mobile_v2.0_cls_infer",
+            ) if use_angle_cls else None
 
             paddle_kwargs: Dict[str, Any] = {
                 "use_angle_cls": use_angle_cls,
@@ -110,6 +130,12 @@ class PaddleEngine:
                 "ocr_version": ocr_version,
                 "rec_image_shape": rec_image_shape,
             }
+            if det_model_dir:
+                paddle_kwargs["det_model_dir"] = det_model_dir
+            if rec_model_dir:
+                paddle_kwargs["rec_model_dir"] = rec_model_dir
+            if cls_model_dir:
+                paddle_kwargs["cls_model_dir"] = cls_model_dir
             if rec_algorithm:
                 paddle_kwargs["rec_algorithm"] = rec_algorithm
 
@@ -122,6 +148,9 @@ class PaddleEngine:
                 "ir_optim": ir_optim,
                 "enable_mkldnn": enable_mkldnn,
                 "cpu_threads": cpu_threads,
+                "det_model_dir": det_model_dir or "auto-download",
+                "rec_model_dir": rec_model_dir or "auto-download",
+                "cls_model_dir": cls_model_dir or "auto-download",
             }
             return
 

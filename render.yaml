@@ -34,7 +34,9 @@ services:
       - key: PADDLE_REC_IMAGE_SHAPE
         value: 3,32,320
       - key: OCR_MAX_IMAGE_SIDE
-        value: "2200"
+        value: "1600"
+      - key: OCR_PDF_RENDER_SCALE
+        value: "1.5"
       - key: LOG_LEVEL
         value: INFO
       - key: ALLOWED_ORIGINS

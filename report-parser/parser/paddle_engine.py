@@ -1,8 +1,9 @@
 """PaddleOCR 引擎封装 - PaddleOCR 2.7.3（Render 默认 PP-OCRv2）"""
+import gc
 import io
 import os
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterator, Tuple
 from PIL import Image
 import numpy as np
 
@@ -86,6 +87,9 @@ class PaddleEngine:
         self._ocr = None
         self.runtime_config: Dict[str, Any] = {}
         self.backend = "mock" if use_mock else get_ocr_status(use_mock)["engine"]
+        self.use_angle_cls = False
+        self.max_image_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "1600"))
+        self.pdf_render_scale = max(1.0, float(os.getenv("OCR_PDF_RENDER_SCALE", "1.5")))
 
         if use_mock:
             return
@@ -103,6 +107,7 @@ class PaddleEngine:
             # Render free(512Mi) 在加载 det/rec/cls 三套模型时容易 OOM。
             # 体检单大多是正向扫描件，默认关闭角度分类器，优先保证线上稳定。
             use_angle_cls = _env_bool("PADDLE_USE_ANGLE_CLS", False)
+            self.use_angle_cls = use_angle_cls
 
             # PP-OCRv2 在低规格 CPU 上兼容性更高，默认使用 CRNN 并适配 rec_image_shape。
             is_legacy_v2 = "v2" in ocr_version.lower()
@@ -153,6 +158,8 @@ class PaddleEngine:
                 "det_model_dir": det_model_dir or "auto-download",
                 "rec_model_dir": rec_model_dir or "auto-download",
                 "cls_model_dir": cls_model_dir or "auto-download",
+                "max_image_side": self.max_image_side,
+                "pdf_render_scale": self.pdf_render_scale,
             }
             return
 
@@ -175,14 +182,15 @@ class PaddleEngine:
             raise RuntimeError("PaddleOCR 未安装")
 
         try:
-            ocr_results = self._run_ocr(file_content, filename)
             tables: List[Dict[str, Any]] = []
             indicators: List[Dict[str, Any]] = []
             markdown_sections: List[str] = []
             report_date: Optional[str] = None
             all_text_parts: List[str] = []
+            page_count = 0
 
-            for page_index, ocr_result in enumerate(ocr_results):
+            for page_index, (page_image, ocr_result) in enumerate(self._iter_ocr_results(file_content, filename)):
+                page_count = page_index + 1
                 page_result = self._parse_single_page(ocr_result, page_index)
                 tables.extend(page_result["tables"])
                 indicators.extend(page_result["indicators"])
@@ -192,13 +200,18 @@ class PaddleEngine:
                     report_date = page_result["reportDate"]
                 if page_result["allText"]:
                     all_text_parts.append(page_result["allText"])
+                del page_image
+                gc.collect()
+
+            if page_count == 0:
+                raise RuntimeError("未能读取到可解析的页面内容")
 
             if not report_date and all_text_parts:
                 report_date = self._extract_date(" ".join(all_text_parts))
 
             return {
                 "success": True,
-                "pageCount": max(1, len(ocr_results)),
+                "pageCount": max(1, page_count),
                 "reportDate": report_date,
                 "tables": tables,
                 "indicators": indicators,
@@ -215,20 +228,19 @@ class PaddleEngine:
                 "error": str(e)
             }
 
-    def _run_ocr(self, file_content: bytes, filename: str):
+    def _iter_ocr_results(self, file_content: bytes, filename: str) -> Iterator[Tuple[np.ndarray, Any]]:
+        for page_image in self._iter_page_images(file_content, filename):
+            if self.backend == "tesseract":
+                yield page_image, self._run_tesseract(page_image)
+            else:
+                yield page_image, self._ocr.ocr(page_image, cls=self.use_angle_cls)
+
+    def _iter_page_images(self, file_content: bytes, filename: str) -> Iterator[np.ndarray]:
         if self._is_pdf(file_content, filename):
-            page_images = self._render_pdf_pages(file_content)
+            yield from self._render_pdf_pages(file_content)
         else:
             image = self._prepare_image_for_ocr(Image.open(io.BytesIO(file_content)).convert("RGB"))
-            page_images = [np.array(image)]
-
-        if not page_images:
-            raise RuntimeError("未能读取到可解析的页面内容")
-
-        if self.backend == "tesseract":
-            return [self._run_tesseract(page_image) for page_image in page_images]
-
-        return [self._ocr.ocr(page_image, cls=True) for page_image in page_images]
+            yield np.array(image)
 
     def _run_tesseract(self, page_image: np.ndarray):
         """将 Tesseract 输出转换为 PaddleOCR 兼容结构。"""
@@ -285,30 +297,26 @@ class PaddleEngine:
             return True
         return filename.lower().endswith(".pdf")
 
-    def _render_pdf_pages(self, file_content: bytes) -> List[np.ndarray]:
+    def _render_pdf_pages(self, file_content: bytes) -> Iterator[np.ndarray]:
         if not PDF_RENDER_AVAILABLE:
             raise RuntimeError("当前环境缺少 PyMuPDF（pymupdf），无法解析 PDF 文件")
 
         doc = fitz.open(stream=file_content, filetype="pdf")
-        pages: List[np.ndarray] = []
         try:
             for page in doc:
-                # 使用 2x 缩放提高 OCR 识别稳定性
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                pix = page.get_pixmap(matrix=fitz.Matrix(self.pdf_render_scale, self.pdf_render_scale), alpha=False)
                 mode = "RGB" if pix.n < 4 else "RGBA"
                 image = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
                 if mode == "RGBA":
                     image = image.convert("RGB")
                 image = self._prepare_image_for_ocr(image)
-                pages.append(np.array(image))
+                yield np.array(image)
         finally:
             doc.close()
 
-        return pages
-
     def _prepare_image_for_ocr(self, image: Image.Image) -> Image.Image:
-        """限制超大图片尺寸，避免 Tesseract 在免费实例上长时间阻塞。"""
-        max_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "2200"))
+        """限制超大图片尺寸，避免免费实例在 OCR 推理阶段 OOM。"""
+        max_side = self.max_image_side
         if max_side <= 0:
             return image
 

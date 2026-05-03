@@ -100,7 +100,9 @@ class PaddleEngine:
             ir_optim = _env_bool("PADDLE_IR_OPTIM", False)
             enable_mkldnn = _env_bool("PADDLE_ENABLE_MKLDNN", False)
             cpu_threads = max(1, int(os.getenv("PADDLE_CPU_THREADS", "1")))
-            use_angle_cls = _env_bool("PADDLE_USE_ANGLE_CLS", True)
+            # Render free(512Mi) 在加载 det/rec/cls 三套模型时容易 OOM。
+            # 体检单大多是正向扫描件，默认关闭角度分类器，优先保证线上稳定。
+            use_angle_cls = _env_bool("PADDLE_USE_ANGLE_CLS", False)
 
             # PP-OCRv2 在低规格 CPU 上兼容性更高，默认使用 CRNN 并适配 rec_image_shape。
             is_legacy_v2 = "v2" in ocr_version.lower()

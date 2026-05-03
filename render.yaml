@@ -25,6 +25,8 @@ services:
         value: "false"
       - key: PADDLE_CPU_THREADS
         value: "1"
+      - key: PADDLE_USE_ANGLE_CLS
+        value: "false"
       - key: PADDLE_OCR_VERSION
         value: PP-OCRv2
       - key: PADDLE_REC_ALGORITHM

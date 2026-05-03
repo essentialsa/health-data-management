@@ -280,9 +280,8 @@ function LoginPage({ onLogin, onSignUp, onResetPassword, onOAuthLogin, errorMess
               </div>
               <div>
                 <CardTitle className="text-2xl bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
-                  体检数据管理
+                  个人健康中心
                 </CardTitle>
-                <CardDescription className="text-gray-600">登录后安全访问您的健康数据</CardDescription>
               </div>
             </div>
             <div className="flex gap-2 mt-4">
@@ -4814,21 +4813,15 @@ export default function App() {
   const latestRecordLabel = latestRecordDate?.toLocaleDateString("zh-CN") ?? "暂无数据";
   const distinctDateCount = new Set(records.map(record => record.date)).size;
   const enabledCategoryCount = indicatorCategories.filter(category => category.enabled !== false).length;
-  const cloudStatusLabel = cloudProvider === "none"
-    ? "未连接云端"
-    : cloudAutoSync
-      ? "自动同步已开启"
-      : "已连接，当前手动同步";
   const heroMetrics = [
-    { label: "总记录数", value: `${records.length}`, hint: "已录入体检数据" },
-    { label: "覆盖日期", value: `${distinctDateCount}`, hint: "可追踪历史批次" },
-    { label: "最后更新", value: latestRecordLabel, hint: "最近一次数据日期" },
+    { label: "总记录数", value: `${records.length}` },
+    { label: "覆盖日期", value: `${distinctDateCount}` },
+    { label: "最后更新", value: latestRecordLabel },
   ];
   const statCards = [
     {
       title: "总记录数",
       value: `${records.length}`,
-      description: "当前系统内体检记录",
       icon: Database,
       iconTone: "from-violet-500 to-blue-500",
       valueTone: "from-violet-600 to-blue-600",
@@ -4836,7 +4829,6 @@ export default function App() {
     {
       title: "有效指标分类",
       value: `${enabledCategoryCount}`,
-      description: `共维护 ${indicatorCategories.length} 类指标`,
       icon: TrendingUp,
       iconTone: "from-blue-500 to-cyan-500",
       valueTone: "from-blue-600 to-cyan-600",
@@ -4844,7 +4836,6 @@ export default function App() {
     {
       title: "覆盖日期",
       value: `${distinctDateCount}`,
-      description: "便于纵向观察趋势",
       icon: Calendar,
       iconTone: "from-pink-500 to-rose-500",
       valueTone: "from-pink-600 to-rose-600",
@@ -4852,54 +4843,28 @@ export default function App() {
     {
       title: "同步状态",
       value: cloudProvider === "googleDrive" ? "Google Drive" : "本地模式",
-      description: cloudStatusLabel,
       icon: Cloud,
       iconTone: "from-sky-500 to-blue-500",
       valueTone: "from-sky-600 to-blue-600",
     },
   ];
-  const actionTriggerClassName = "h-11 w-full justify-center rounded-2xl px-5 text-sm font-medium whitespace-nowrap sm:w-auto";
+  const actionTriggerClassName = "h-11 w-full justify-center rounded-2xl px-4 text-[13px] font-medium whitespace-nowrap";
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.14),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(135deg,_#f8f7ff_0%,_#eef5ff_48%,_#fff4f8_100%)] px-4 py-6 md:px-8 md:py-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-          <Card className="relative overflow-hidden border border-white/70 bg-white/72 shadow-[0_28px_80px_-32px_rgba(91,90,210,0.45)] backdrop-blur-2xl">
-            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-violet-500/12 via-blue-500/10 to-pink-500/12" />
-            <div className="absolute -left-16 top-10 h-40 w-40 rounded-full bg-violet-400/10 blur-3xl" />
-            <div className="absolute right-4 top-6 h-32 w-32 rounded-full bg-blue-400/10 blur-3xl" />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,430px)]">
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-violet-700 via-violet-600 to-blue-500 shadow-[0_32px_90px_-36px_rgba(91,90,210,0.75)]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.28),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.16),_transparent_34%)]" />
             <CardContent className="relative p-6 md:p-8">
               <div className="flex flex-col gap-8">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-5">
-                    <div className="inline-flex items-center rounded-full border border-violet-200/80 bg-white/80 px-3 py-1 text-xs font-medium text-violet-700 shadow-sm shadow-violet-100/70">
-                      健康数据工作台
+                  <div className="flex items-start gap-4">
+                    <div className="rounded-[26px] bg-white/16 p-4 text-white shadow-lg shadow-violet-900/20 ring-1 ring-white/20 backdrop-blur">
+                      <Activity className="h-8 w-8" />
                     </div>
-                    <div className="flex items-start gap-4">
-                      <div className="rounded-[26px] bg-gradient-to-br from-violet-500 via-blue-500 to-pink-500 p-4 text-white shadow-lg shadow-violet-200/80">
-                        <Activity className="h-8 w-8" />
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <h1 className="bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-3xl font-bold tracking-tight text-transparent md:text-5xl">
-                            体检数据管理
-                          </h1>
-                          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
-                            重新整理录入、识别、问诊简报与数据维护入口，让日常使用流程更直接，信息层级更清晰。
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                          <span className="rounded-full border border-violet-200 bg-violet-50/80 px-3 py-1">
-                            OCR 报告导入
-                          </span>
-                          <span className="rounded-full border border-blue-200 bg-blue-50/80 px-3 py-1">
-                            问诊简报生成
-                          </span>
-                          <span className="rounded-full border border-pink-200 bg-pink-50/80 px-3 py-1">
-                            指标趋势管理
-                          </span>
-                        </div>
-                      </div>
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">个人健康中心</h1>
                     </div>
                   </div>
                   {supabaseEnabled && supabaseSession && (
@@ -4917,11 +4882,10 @@ export default function App() {
                   {heroMetrics.map(metric => (
                     <div
                       key={metric.label}
-                      className="rounded-3xl border border-white/70 bg-white/78 px-4 py-4 shadow-[0_18px_40px_-28px_rgba(91,90,210,0.6)]"
+                      className="rounded-3xl border border-white/18 bg-white/12 px-4 py-4 shadow-[0_18px_40px_-28px_rgba(49,46,129,0.85)] backdrop-blur-md"
                     >
-                      <div className="text-xs font-medium tracking-[0.16em] text-slate-400">{metric.label}</div>
-                      <div className="mt-2 text-2xl font-semibold text-slate-900 md:text-3xl">{metric.value}</div>
-                      <div className="mt-1 text-sm text-slate-500">{metric.hint}</div>
+                      <div className="text-xs font-medium tracking-[0.16em] text-white/70">{metric.label}</div>
+                      <div className="mt-2 text-2xl font-semibold text-white md:text-3xl">{metric.value}</div>
                     </div>
                   ))}
                 </div>
@@ -4929,84 +4893,9 @@ export default function App() {
             </CardContent>
           </Card>
 
-          <Card className="border border-white/70 bg-white/72 shadow-[0_24px_72px_-36px_rgba(59,130,246,0.55)] backdrop-blur-2xl">
-            <CardContent className="flex h-full flex-col gap-6 p-6">
-              <div className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">系统状态</div>
-                <div className="text-2xl font-semibold text-slate-900">当前工作概览</div>
-                <p className="text-sm leading-6 text-slate-500">
-                  保留原有色彩语言，重做页面结构，核心功能集中在首页即可触达。
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="rounded-3xl border border-violet-100 bg-gradient-to-r from-violet-50/90 via-white to-blue-50/90 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-slate-500">数据模式</div>
-                      <div className="mt-1 text-lg font-semibold text-slate-900">
-                        {cloudProvider === "googleDrive" ? "云端同步已配置" : "本地安全存储"}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl bg-white/90 p-3 shadow-sm">
-                      <HardDrive className="h-5 w-5 text-violet-500" />
-                    </div>
-                  </div>
-                  <div className="mt-3 text-sm text-slate-500">{cloudStatusLabel}</div>
-                </div>
-
-                <div className="rounded-3xl border border-blue-100 bg-white/90 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-slate-500">云端可用空间</div>
-                      <div className="mt-1 text-lg font-semibold text-slate-900">{cloudAvailableStorageText}</div>
-                    </div>
-                    <div className="rounded-2xl bg-blue-50 p-3">
-                      <Cloud className="h-5 w-5 text-blue-500" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-pink-100 bg-white/90 p-4">
-                  <div className="text-sm font-medium text-slate-500">建议工作流</div>
-                  <div className="mt-2 space-y-2 text-sm text-slate-600">
-                    <div>先导入报告或录入数据，再生成问诊简报。</div>
-                    <div>指标维护与数据清理归到下方工作台统一处理。</div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="border border-white/70 bg-white/70 shadow-[0_28px_72px_-34px_rgba(124,58,237,0.32)] backdrop-blur-2xl">
-          <CardHeader className="gap-4 border-b border-white/70 pb-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <CardTitle className="bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-2xl font-semibold text-transparent">
-                  快捷操作
-                </CardTitle>
-                <CardDescription className="mt-2 text-sm leading-6 text-slate-500">
-                  高频功能放在前面，辅助操作单独分组，避免所有按钮混在一起。
-                </CardDescription>
-              </div>
-              <div className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-medium text-slate-500">
-                所有功能入口保持不变，仅重做视觉和排布
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5 p-6">
-            <div className="rounded-[28px] border border-violet-100/80 bg-gradient-to-r from-violet-50/90 via-white to-blue-50/90 p-5">
-              <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-base font-semibold text-slate-900">核心流程</div>
-                <div className="text-sm text-slate-500">录入、OCR 识别、问诊简报集中在同一组</div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <AddRecordDialog
-                  onAddRecord={handleAddRecord}
-                  indicatorCategories={indicatorCategories}
-                  triggerClassName={actionTriggerClassName}
-                />
+          <Card className="border border-white/70 bg-white/76 shadow-[0_24px_72px_-36px_rgba(59,130,246,0.55)] backdrop-blur-2xl">
+            <CardContent className="p-5">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <MedicalReportImportDialog
                   onImportRecords={handleImportRecords}
                   existingCategories={indicatorCategories.map(category => ({
@@ -5029,87 +4918,74 @@ export default function App() {
                   records={records}
                   triggerClassName={actionTriggerClassName}
                 />
-              </div>
-            </div>
-
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
-              <div className="rounded-[28px] border border-slate-100 bg-white/88 p-5 shadow-[0_16px_42px_-32px_rgba(15,23,42,0.45)]">
-                <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-base font-semibold text-slate-900">数据管理</div>
-                  <div className="text-sm text-slate-500">模板维护、批量导入和导出统一收纳</div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <IndicatorMaintenanceDialog
-                    categories={indicatorCategories}
-                    onChangeCategories={setIndicatorCategories}
-                    usedIndicatorIds={new Set(records.map(record => record.indicatorType))}
-                    indicatorChangeLogs={indicatorChangeLogs}
-                    onChangeIndicatorLogs={setIndicatorChangeLogs}
-                    triggerClassName={actionTriggerClassName}
-                  />
-                  <ImportRecordsDialog
-                    categories={indicatorCategories}
-                    onImportRecords={handleImportRecords}
-                    triggerClassName={actionTriggerClassName}
-                  />
-                  <ExportDialog
-                    categories={indicatorCategories}
-                    onExport={handleExport}
-                    triggerClassName={actionTriggerClassName}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-100 bg-white/88 p-5 shadow-[0_16px_42px_-32px_rgba(15,23,42,0.45)]">
-                <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-base font-semibold text-slate-900">同步与清理</div>
-                  <div className="text-sm text-slate-500">同步设置、立即同步和数据清理</div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <CloudSyncDialog
-                    provider={cloudProvider}
-                    autoSync={cloudAutoSync}
-                    tasks={cloudUploadTasks}
-                    availableStorageText={cloudAvailableStorageText}
-                    authConfig={authConfig}
-                    onChangeProvider={setCloudProvider}
-                    onToggleAutoSync={() => setCloudAutoSync(prev => !prev)}
-                    onUpdateAuthConfig={handleUpdateAuthConfig}
-                    onPullFromCloud={handleCloudPull}
-                    cloudPulling={cloudPulling}
-                    triggerClassName={actionTriggerClassName}
-                  />
-                  <Button
-                    variant="outline"
-                    disabled={manualSyncing}
-                    onClick={handleManualSync}
-                    className={cn(
-                      "border-blue-200 bg-white/80 text-blue-600 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40",
-                      actionTriggerClassName,
-                    )}
-                  >
-                    {manualSyncing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        正在同步
-                      </>
-                    ) : (
-                      <>
-                        <CloudUpload className="h-4 w-4" />
-                        立即同步
-                      </>
-                    )}
-                  </Button>
+                <AddRecordDialog
+                  onAddRecord={handleAddRecord}
+                  indicatorCategories={indicatorCategories}
+                  triggerClassName={actionTriggerClassName}
+                />
+                <IndicatorMaintenanceDialog
+                  categories={indicatorCategories}
+                  onChangeCategories={setIndicatorCategories}
+                  usedIndicatorIds={new Set(records.map(record => record.indicatorType))}
+                  indicatorChangeLogs={indicatorChangeLogs}
+                  onChangeIndicatorLogs={setIndicatorChangeLogs}
+                  triggerClassName={actionTriggerClassName}
+                />
+                <ImportRecordsDialog
+                  categories={indicatorCategories}
+                  onImportRecords={handleImportRecords}
+                  triggerClassName={actionTriggerClassName}
+                />
+                <ExportDialog
+                  categories={indicatorCategories}
+                  onExport={handleExport}
+                  triggerClassName={actionTriggerClassName}
+                />
+                <CloudSyncDialog
+                  provider={cloudProvider}
+                  autoSync={cloudAutoSync}
+                  tasks={cloudUploadTasks}
+                  availableStorageText={cloudAvailableStorageText}
+                  authConfig={authConfig}
+                  onChangeProvider={setCloudProvider}
+                  onToggleAutoSync={() => setCloudAutoSync(prev => !prev)}
+                  onUpdateAuthConfig={handleUpdateAuthConfig}
+                  onPullFromCloud={handleCloudPull}
+                  cloudPulling={cloudPulling}
+                  triggerClassName={actionTriggerClassName}
+                />
+                <Button
+                  variant="outline"
+                  disabled={manualSyncing}
+                  onClick={handleManualSync}
+                  className={cn(
+                    "border-blue-200 bg-white/80 text-blue-600 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40",
+                    actionTriggerClassName,
+                  )}
+                >
+                  {manualSyncing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      正在同步
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="h-4 w-4" />
+                      立即同步
+                    </>
+                  )}
+                </Button>
+                <div className="sm:col-span-2 sm:flex sm:justify-end">
                   <ClearAllDataDialog
                     disabled={records.length === 0}
                     onConfirm={handleClearAllRecords}
-                    triggerClassName={actionTriggerClassName}
+                    triggerClassName={cn(actionTriggerClassName, "sm:w-auto sm:min-w-[160px]")}
                   />
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {statCards.map(card => {
@@ -5121,12 +4997,11 @@ export default function App() {
               >
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                       <div className="text-sm font-medium text-slate-500">{card.title}</div>
                       <div className={cn("bg-gradient-to-r bg-clip-text text-3xl font-semibold text-transparent", card.valueTone)}>
                         {card.value}
                       </div>
-                      <div className="text-sm text-slate-500">{card.description}</div>
                     </div>
                     <div className={cn("rounded-2xl bg-gradient-to-br p-3 text-white shadow-lg", card.iconTone)}>
                       <Icon className="h-5 w-5" />
@@ -5141,9 +5016,7 @@ export default function App() {
         <Tabs defaultValue="table" className="space-y-5">
           <div className="flex flex-col gap-4 rounded-[30px] border border-white/70 bg-white/72 p-4 shadow-[0_28px_72px_-36px_rgba(15,23,42,0.35)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">工作台</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-900">数据查看与维护</div>
-              <div className="mt-1 text-sm text-slate-500">表格、图表和维护操作在同一工作区切换，不打断当前任务。</div>
+              <div className="text-2xl font-semibold text-slate-900">数据查看与维护</div>
             </div>
             <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-2xl bg-slate-900/5 p-1.5 md:justify-end">
               <TabsTrigger
@@ -5174,9 +5047,6 @@ export default function App() {
                   <CardTitle className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-2xl font-semibold text-transparent">
                     指标数据
                   </CardTitle>
-                  <CardDescription className="mt-2 text-sm text-slate-500">
-                    按检验指标种类查看不同日期的具体数值，适合快速对照趋势。
-                  </CardDescription>
                 </div>
                 <Select
                   value={indicatorDataCategory?.id ?? ""}
@@ -5260,9 +5130,6 @@ export default function App() {
                     <CardTitle className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-2xl font-semibold text-transparent">
                       数据维护
                     </CardTitle>
-                    <CardDescription className="mt-2 text-sm text-slate-500">
-                      统一查看记录、删除恢复和最近变更，减少分散操作。
-                    </CardDescription>
                   </div>
                 </div>
                 <Select value={maintenanceCategoryId} onValueChange={setMaintenanceCategoryId}>

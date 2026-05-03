@@ -121,10 +121,12 @@ class PaddleEngine:
                 "PADDLE_REC_MODEL_DIR",
                 "/opt/paddleocr/models/ch_PP-OCRv2_rec_infer",
             )
+            # PaddleOCR 2.7.x 会在构造函数里无条件检查并下载 cls 模型目录，
+            # 即使 use_angle_cls=false。这里始终传本地已打包的 cls 目录，避免线上冷启动时再触发下载。
             cls_model_dir = _resolve_model_dir(
                 "PADDLE_CLS_MODEL_DIR",
                 "/opt/paddleocr/models/ch_ppocr_mobile_v2.0_cls_infer",
-            ) if use_angle_cls else None
+            )
 
             paddle_kwargs: Dict[str, Any] = {
                 "use_angle_cls": use_angle_cls,

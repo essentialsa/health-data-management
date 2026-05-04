@@ -45,6 +45,10 @@ services:
         value: "1.0"
       - key: OCR_LLM_ENABLED
         value: "true"
+      - key: OCR_LLM_BASE_URL
+        sync: false
+      - key: OCR_LLM_API_KEY
+        sync: false
       - key: OCR_LLM_MODEL
         value: gpt-4o-mini
       - key: OCR_LLM_TIMEOUT_SEC

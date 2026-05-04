@@ -279,8 +279,9 @@ function LoginPage({ onLogin, onSignUp, onResetPassword, onOAuthLogin, errorMess
               </div>
               <div>
                 <CardTitle className="text-2xl bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
-                  个人健康中心
+                  体检数据管理
                 </CardTitle>
+                <CardDescription className="text-gray-600">登录后安全访问您的健康数据</CardDescription>
               </div>
             </div>
             <div className="flex gap-2 mt-4">
@@ -4660,255 +4661,209 @@ export default function App() {
     }
   }
 
-  const latestRecordDate = records.length > 0
-    ? new Date(Math.max(...records.map(record => new Date(record.date).getTime())))
-    : null;
-  const latestRecordLabel = latestRecordDate?.toLocaleDateString("zh-CN") ?? "暂无数据";
-  const distinctDateCount = new Set(records.map(record => record.date)).size;
-  const enabledCategoryCount = indicatorCategories.filter(category => category.enabled !== false).length;
-  const heroMetrics = [
-    { label: "总记录数", value: `${records.length}` },
-    { label: "覆盖日期", value: `${distinctDateCount}` },
-    { label: "最后更新", value: latestRecordLabel },
-  ];
-  const statCards = [
-    {
-      title: "总记录数",
-      value: `${records.length}`,
-      icon: Database,
-      iconTone: "from-violet-500 to-blue-500",
-      valueTone: "from-violet-600 to-blue-600",
-    },
-    {
-      title: "有效指标分类",
-      value: `${enabledCategoryCount}`,
-      icon: TrendingUp,
-      iconTone: "from-blue-500 to-cyan-500",
-      valueTone: "from-blue-600 to-cyan-600",
-    },
-    {
-      title: "覆盖日期",
-      value: `${distinctDateCount}`,
-      icon: Calendar,
-      iconTone: "from-pink-500 to-rose-500",
-      valueTone: "from-pink-600 to-rose-600",
-    },
-    {
-      title: "同步状态",
-      value: cloudProvider === "googleDrive" ? "Google Drive" : "本地模式",
-      icon: Cloud,
-      iconTone: "from-sky-500 to-blue-500",
-      valueTone: "from-sky-600 to-blue-600",
-    },
-  ];
-  const actionTriggerClassName = "h-11 w-full justify-center rounded-2xl px-4 text-[13px] font-medium whitespace-nowrap";
+  const actionTriggerClassName = "h-10 w-full px-4 justify-center whitespace-nowrap text-sm";
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.14),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(135deg,_#f8f7ff_0%,_#eef5ff_48%,_#fff4f8_100%)] px-4 py-6 md:px-8 md:py-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,430px)]">
-          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-violet-700 via-violet-600 to-blue-500 shadow-[0_32px_90px_-36px_rgba(91,90,210,0.75)]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.28),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.16),_transparent_34%)]" />
-            <CardContent className="relative p-6 md:p-8">
-              <div className="flex flex-col gap-8">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="rounded-[26px] bg-white/16 p-4 text-white shadow-lg shadow-violet-900/20 ring-1 ring-white/20 backdrop-blur">
-                      <Activity className="h-8 w-8" />
-                    </div>
-                    <div>
-                      <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">个人健康中心</h1>
-                    </div>
-                  </div>
-                  {supabaseEnabled && supabaseSession && (
-                    <div className="shrink-0">
-                      <UserMenu
-                        email={supabaseSession.user.email}
-                        onConfirm={handleSignOut}
-                        onSetPassword={handleSetUserPassword}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  {heroMetrics.map(metric => (
-                    <div
-                      key={metric.label}
-                      className="rounded-3xl border border-white/18 bg-white/12 px-4 py-4 shadow-[0_18px_40px_-28px_rgba(49,46,129,0.85)] backdrop-blur-md"
-                    >
-                      <div className="text-xs font-medium tracking-[0.16em] text-white/70">{metric.label}</div>
-                      <div className="mt-2 text-2xl font-semibold text-white md:text-3xl">{metric.value}</div>
-                    </div>
-                  ))}
-                </div>
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* 头部 */}
+        <div className="mb-10">
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-4 bg-gradient-to-br from-violet-500 to-blue-500 rounded-2xl shadow-lg shadow-violet-200">
+                <Activity className="w-8 h-8 text-white" />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-white/70 bg-white/76 shadow-[0_24px_72px_-36px_rgba(59,130,246,0.55)] backdrop-blur-2xl">
-            <CardContent className="p-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <MedicalReportImportDialog
-                  onImportRecords={handleImportRecords}
-                  existingCategories={indicatorCategories.map(category => ({
-                    id: category.id,
-                    name: category.name,
-                    code: category.code,
-                    items: category.items.map(item => ({
-                      id: item.id,
-                      label: item.label,
-                      unit: item.unit,
-                      code: item.code,
-                      referenceRange: item.referenceRange,
-                      aliases: item.aliases,
-                    })),
-                  }))}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <ConsultationBriefDialog
-                  categories={indicatorCategories}
-                  records={records}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <AddRecordDialog
-                  onAddRecord={handleAddRecord}
-                  indicatorCategories={indicatorCategories}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <IndicatorMaintenanceDialog
-                  categories={indicatorCategories}
-                  onChangeCategories={setIndicatorCategories}
-                  usedIndicatorIds={new Set(records.map(record => record.indicatorType))}
-                  indicatorChangeLogs={indicatorChangeLogs}
-                  onChangeIndicatorLogs={setIndicatorChangeLogs}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <ImportRecordsDialog
-                  categories={indicatorCategories}
-                  onImportRecords={handleImportRecords}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <ExportDialog
-                  categories={indicatorCategories}
-                  onExport={handleExport}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <CloudSyncDialog
-                  provider={cloudProvider}
-                  autoSync={cloudAutoSync}
-                  tasks={cloudUploadTasks}
-                  availableStorageText={cloudAvailableStorageText}
-                  authConfig={authConfig}
-                  onChangeProvider={setCloudProvider}
-                  onToggleAutoSync={() => setCloudAutoSync(prev => !prev)}
-                  onUpdateAuthConfig={handleUpdateAuthConfig}
-                  onPullFromCloud={handleCloudPull}
-                  cloudPulling={cloudPulling}
-                  triggerClassName={actionTriggerClassName}
-                />
-                <Button
-                  variant="outline"
-                  disabled={manualSyncing}
-                  onClick={handleManualSync}
-                  className={cn(
-                    "border-blue-200 bg-white/80 text-blue-600 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40",
-                    actionTriggerClassName,
-                  )}
-                >
-                  {manualSyncing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      正在同步
-                    </>
-                  ) : (
-                    <>
-                      <CloudUpload className="h-4 w-4" />
-                      立即同步
-                    </>
-                  )}
-                </Button>
-                <div className="sm:col-span-2 sm:flex sm:justify-end">
-                  <ClearAllDataDialog
-                    disabled={records.length === 0}
-                    onConfirm={handleClearAllRecords}
-                    triggerClassName={cn(actionTriggerClassName, "sm:w-auto sm:min-w-[160px]")}
-                  />
-                </div>
+              <div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
+                  体检数据管理
+                </h1>
+                <p className="text-gray-600 mt-2">智能记录，轻松管理您的健康数据</p>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {statCards.map(card => {
-            const Icon = card.icon;
-            return (
-              <Card
-                key={card.title}
-                className="border border-white/70 bg-white/72 shadow-[0_22px_56px_-38px_rgba(91,90,210,0.7)] backdrop-blur-2xl"
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1.5">
-                      <div className="text-sm font-medium text-slate-500">{card.title}</div>
-                      <div className={cn("bg-gradient-to-r bg-clip-text text-3xl font-semibold text-transparent", card.valueTone)}>
-                        {card.value}
-                      </div>
-                    </div>
-                    <div className={cn("rounded-2xl bg-gradient-to-br p-3 text-white shadow-lg", card.iconTone)}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        <Tabs defaultValue="table" className="space-y-5">
-          <div className="flex flex-col gap-4 rounded-[30px] border border-white/70 bg-white/72 p-4 shadow-[0_28px_72px_-36px_rgba(15,23,42,0.35)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-2xl font-semibold text-slate-900">数据查看与维护</div>
             </div>
-            <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-2xl bg-slate-900/5 p-1.5 md:justify-end">
-              <TabsTrigger
-                value="table"
-                className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md"
-              >
-                数据列表
-              </TabsTrigger>
-              <TabsTrigger
-                value="chart"
-                className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-pink-500 data-[state=active]:text-white data-[state=active]:shadow-md"
-              >
-                图表分析
-              </TabsTrigger>
-              <TabsTrigger
-                value="maintenance"
-                className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-blue-500 data-[state=active]:text-white data-[state=active]:shadow-md"
-              >
-                数据维护
-              </TabsTrigger>
-            </TabsList>
+            {supabaseEnabled && supabaseSession && (
+              <div className="mt-2">
+                <UserMenu
+                  email={supabaseSession.user.email}
+                  onConfirm={handleSignOut}
+                  onSetPassword={handleSetUserPassword}
+                />
+              </div>
+            )}
           </div>
+          
+          <div className="grid w-full grid-cols-2 items-center gap-3 pb-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <AddRecordDialog
+                onAddRecord={handleAddRecord}
+                indicatorCategories={indicatorCategories}
+                triggerClassName={actionTriggerClassName}
+              />
+              <IndicatorMaintenanceDialog
+                categories={indicatorCategories}
+                onChangeCategories={setIndicatorCategories}
+                usedIndicatorIds={new Set(records.map(r => r.indicatorType))}
+                indicatorChangeLogs={indicatorChangeLogs}
+                onChangeIndicatorLogs={setIndicatorChangeLogs}
+                triggerClassName={actionTriggerClassName}
+              />
+              <MedicalReportImportDialog
+                onImportRecords={handleImportRecords}
+                existingCategories={indicatorCategories.map(category => ({
+                  id: category.id,
+                  name: category.name,
+                  code: category.code,
+                  items: category.items.map(item => ({
+                    id: item.id,
+                    label: item.label,
+                    unit: item.unit,
+                    code: item.code,
+                    referenceRange: item.referenceRange,
+                    aliases: item.aliases,
+                  })),
+                }))}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ConsultationBriefDialog
+                categories={indicatorCategories}
+                records={records}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ImportRecordsDialog
+                categories={indicatorCategories}
+                onImportRecords={handleImportRecords}
+                triggerClassName={actionTriggerClassName}
+              />
+              <ExportDialog
+                categories={indicatorCategories}
+                onExport={handleExport}
+                triggerClassName={actionTriggerClassName}
+              />
+              <CloudSyncDialog
+                provider={cloudProvider}
+                autoSync={cloudAutoSync}
+                tasks={cloudUploadTasks}
+                availableStorageText={cloudAvailableStorageText}
+                authConfig={authConfig}
+                onChangeProvider={setCloudProvider}
+                onToggleAutoSync={() => setCloudAutoSync(prev => !prev)}
+                onUpdateAuthConfig={handleUpdateAuthConfig}
+                onPullFromCloud={handleCloudPull}
+                cloudPulling={cloudPulling}
+                triggerClassName={actionTriggerClassName}
+              />
+              <Button
+                variant="outline"
+                disabled={manualSyncing}
+                onClick={handleManualSync}
+                className={cn(
+                  "gap-2 bg-white/80 backdrop-blur-sm border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed",
+                  actionTriggerClassName,
+                )}
+              >
+                {manualSyncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    正在同步
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-4 h-4" />
+                    立即同步
+                  </>
+                )}
+              </Button>
+              <ClearAllDataDialog
+                disabled={records.length === 0}
+                onConfirm={handleClearAllRecords}
+                triggerClassName={actionTriggerClassName}
+              />
+          </div>
+        </div>
 
-          <TabsContent value="table" className="mt-0">
-            <Card className="border border-white/70 bg-white/74 shadow-[0_28px_72px_-36px_rgba(124,58,237,0.28)] backdrop-blur-2xl">
-              <CardHeader className="flex flex-col gap-4 border-b border-white/70 pb-5 md:flex-row md:items-center md:justify-between">
+        {/* 统计卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Card className="bg-white/60 backdrop-blur-xl border-0 shadow-xl shadow-violet-100/50 hover:shadow-2xl hover:shadow-violet-100/70 transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-gradient-to-br from-violet-400 to-blue-400 rounded-lg">
+                  <Database className="w-4 h-4 text-white" />
+                </div>
+                <CardDescription className="text-gray-600">总记录数</CardDescription>
+              </div>
+              <CardTitle className="text-4xl bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent">
+                {records.length}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-white/60 backdrop-blur-xl border-0 shadow-xl shadow-blue-100/50 hover:shadow-2xl hover:shadow-blue-100/70 transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-gradient-to-br from-blue-400 to-cyan-400 rounded-lg">
+                  <TrendingUp className="w-4 h-4 text-white" />
+                </div>
+                <CardDescription className="text-gray-600">检验指标种类</CardDescription>
+              </div>
+              <CardTitle className="text-4xl bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                {indicatorCategories.length}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="bg-white/60 backdrop-blur-xl border-0 shadow-xl shadow-pink-100/50 hover:shadow-2xl hover:shadow-pink-100/70 transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 bg-gradient-to-br from-pink-400 to-rose-400 rounded-lg">
+                  <Calendar className="w-4 h-4 text-white" />
+                </div>
+                <CardDescription className="text-gray-600">最后更新</CardDescription>
+              </div>
+              <CardTitle className="text-xl bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">
+                {records.length > 0
+                  ? new Date(Math.max(...records.map(r => new Date(r.date).getTime()))).toLocaleDateString('zh-CN')
+                  : "暂无数据"}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* 主内容区 */}
+        <Tabs defaultValue="table" className="space-y-6">
+          <TabsList className="bg-white/60 backdrop-blur-xl border-0 shadow-lg p-1">
+            <TabsTrigger 
+              value="table" 
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-blue-500 data-[state=active]:text-white rounded-lg"
+            >
+              数据列表
+            </TabsTrigger>
+            <TabsTrigger 
+              value="chart"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-pink-500 data-[state=active]:text-white rounded-lg"
+            >
+              图表分析
+            </TabsTrigger>
+            <TabsTrigger
+              value="maintenance"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-blue-500 data-[state=active]:text-white rounded-lg"
+            >
+              数据维护
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="table">
+            <Card className="bg-white/60 backdrop-blur-xl border-0 shadow-xl shadow-violet-100/50">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <CardTitle className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-2xl font-semibold text-transparent">
+                  <CardTitle className="text-2xl bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent">
                     指标数据
                   </CardTitle>
+                  <CardDescription>按指标种类查看具体检测数据</CardDescription>
                 </div>
                 <Select
                   value={indicatorDataCategory?.id ?? ""}
                   onValueChange={(value: string) => setIndicatorDataCategoryId(value)}
                 >
-                  <SelectTrigger className="w-full border-violet-200 bg-white/90 sm:w-[240px]">
+                  <SelectTrigger className="w-[220px] border-violet-200 focus:border-violet-400 focus:ring-violet-400 bg-white/80">
                     <SelectValue placeholder="选择检验指标种类" />
                   </SelectTrigger>
-                  <SelectContent className="border-violet-200 bg-white/95 backdrop-blur-xl">
+                  <SelectContent className="bg-white/95 backdrop-blur-xl border-violet-200">
                     {indicatorCategories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
@@ -4917,25 +4872,29 @@ export default function App() {
                   </SelectContent>
                 </Select>
               </CardHeader>
-              <CardContent className="p-6">
+              <CardContent>
                 {indicatorDataItems.length === 0 ? (
-                  <div className="flex h-44 flex-col items-center justify-center rounded-[24px] border border-violet-100 bg-gradient-to-br from-white via-violet-50/50 to-blue-50/50 text-sm text-slate-400">
+                  <div className="border border-violet-100 rounded-xl bg-white/40 h-40 flex flex-col items-center justify-center text-gray-400 text-sm">
                     暂无可展示的指标数据
                   </div>
                 ) : indicatorDataRows.length === 0 ? (
-                  <div className="flex h-44 flex-col items-center justify-center rounded-[24px] border border-violet-100 bg-gradient-to-br from-white via-violet-50/50 to-blue-50/50 text-sm text-slate-400">
+                  <div className="border border-violet-100 rounded-xl bg-white/40 h-40 flex flex-col items-center justify-center text-gray-400 text-sm">
                     当前分类暂无数据
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-[24px] border border-violet-100 bg-white/92">
+                  <div className="border border-violet-100 rounded-xl overflow-hidden bg-white/40">
                     <Table>
                       <TableHeader>
-                        <TableRow className="border-violet-100 bg-violet-50/70">
-                          <TableHead className="w-32 py-4 text-sm font-semibold text-slate-700">数据日期</TableHead>
+                        <TableRow className="border-violet-100 bg-violet-50/60">
+                          <TableHead className="text-gray-700 text-sm font-semibold w-32 py-3">数据日期</TableHead>
                           {indicatorDataItems.map(item => (
-                            <TableHead key={item.id} className="py-4 text-sm font-semibold text-slate-700">
+                            <TableHead key={item.id} className="text-gray-700 text-sm font-semibold py-3">
                               {item.label}
-                              {item.unit && <span className="ml-1 text-[11px] text-slate-400">({item.unit})</span>}
+                              {item.unit && (
+                                <span className="ml-1 text-[11px] text-gray-400">
+                                  ({item.unit})
+                                </span>
+                              )}
                             </TableHead>
                           ))}
                         </TableRow>
@@ -4944,13 +4903,13 @@ export default function App() {
                         {indicatorDataRows.map(row => (
                           <TableRow
                             key={String(row.date)}
-                            className="border-violet-100 even:bg-slate-50/45 hover:bg-violet-50/50"
+                            className="border-violet-100 hover:bg-violet-50/40 transition-colors even:bg-white/60"
                           >
-                            <TableCell className="w-32 py-3.5 text-sm text-slate-700">
+                            <TableCell className="text-sm text-gray-700 w-32 py-3">
                               {String(row.date)}
                             </TableCell>
                             {indicatorDataItems.map(item => (
-                              <TableCell key={item.id} className="py-3.5 text-sm text-slate-700">
+                              <TableCell key={item.id} className="text-sm text-gray-700 py-3">
                                 {formatIndicatorValue((row as Record<string, unknown>)[item.id])}
                               </TableCell>
                             ))}
@@ -4964,32 +4923,32 @@ export default function App() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="chart" className="mt-0">
+          <TabsContent value="chart">
             <RecordChart
               records={records}
               indicators={indicatorItems}
               categories={indicatorCategories}
             />
           </TabsContent>
-
-          <TabsContent value="maintenance" className="mt-0">
-            <Card className="border border-white/70 bg-white/74 shadow-[0_28px_72px_-36px_rgba(124,58,237,0.28)] backdrop-blur-2xl">
-              <CardHeader className="flex flex-col gap-4 border-b border-white/70 pb-5 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="rounded-2xl bg-gradient-to-br from-violet-500 to-blue-500 p-3 text-white shadow-lg shadow-violet-200/70">
-                    <History className="h-5 w-5" />
+          <TabsContent value="maintenance">
+            <Card className="bg-white/60 backdrop-blur-xl border-0 shadow-xl shadow-violet-100/50">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-violet-400 to-blue-400 rounded-lg">
+                    <History className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-2xl font-semibold text-transparent">
+                    <CardTitle className="text-2xl bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent">
                       数据维护
                     </CardTitle>
+                    <CardDescription>集中管理体检记录与修改历史</CardDescription>
                   </div>
                 </div>
                 <Select value={maintenanceCategoryId} onValueChange={setMaintenanceCategoryId}>
-                  <SelectTrigger className="w-full border-violet-200 bg-white/90 sm:w-[240px]">
+                  <SelectTrigger className="w-[220px] border-violet-200 focus:border-violet-400 focus:ring-violet-400 bg-white/80">
                     <SelectValue placeholder="全部指标分类" />
                   </SelectTrigger>
-                  <SelectContent className="border-violet-200 bg-white/95 backdrop-blur-xl">
+                  <SelectContent className="bg-white/95 backdrop-blur-xl border-violet-200">
                     <SelectItem value="__all__">全部指标分类</SelectItem>
                     {indicatorCategories.map(category => (
                       <SelectItem key={category.id} value={category.id}>
@@ -4999,29 +4958,27 @@ export default function App() {
                   </SelectContent>
                 </Select>
               </CardHeader>
-              <CardContent className="space-y-7 p-6">
-                <div className="space-y-3">
-                  <div className="text-sm font-medium text-slate-700">记录列表</div>
-                  <div className="rounded-[24px] border border-violet-100 bg-white/92 p-1">
-                    <RecordTable
-                      records={maintenanceRecords}
-                      indicators={maintenanceIndicators}
-                      onDeleteRecord={handleDeleteRecord}
-                      onUpdateRecord={handleUpdateRecord}
-                      onAddFollowupRecord={handleAddFollowupRecord}
-                    />
-                  </div>
+              <CardContent className="space-y-6">
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-3">记录列表</div>
+                  <RecordTable
+                    records={maintenanceRecords}
+                    indicators={maintenanceIndicators}
+                    onDeleteRecord={handleDeleteRecord}
+                    onUpdateRecord={handleUpdateRecord}
+                    onAddFollowupRecord={handleAddFollowupRecord}
+                  />
                 </div>
                 <div>
-                  <div className="mb-3 bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-base font-semibold text-transparent">
+                  <div className="text-base font-semibold bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent mb-3">
                     变更记录
                   </div>
                   {maintenanceLogs.length === 0 ? (
-                    <div className="flex h-36 items-center justify-center rounded-[24px] border border-violet-100 bg-gradient-to-br from-white via-violet-50/50 to-blue-50/50 text-sm text-slate-400">
+                    <div className="border border-violet-100 rounded-2xl bg-white/40 h-32 flex items-center justify-center text-gray-400 text-sm">
                       暂无变更记录
                     </div>
                   ) : (
-                    <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                       {[...maintenanceLogs].reverse().slice(0, 50).map(log => {
                         const indicatorType =
                           log.after?.indicatorType ?? log.before?.indicatorType ?? "";
@@ -5030,19 +4987,19 @@ export default function App() {
                         const label = indicator ? indicator.label : indicatorType || "-";
                         const date = log.after?.date ?? log.before?.date ?? "-";
                         let actionLabel = "";
-                        let actionTone = "border-slate-200 bg-slate-50 text-slate-600";
+                        let actionTone = "text-gray-600 bg-gray-50 border-gray-100";
                         if (log.type === "create") {
                           actionLabel = "新增";
-                          actionTone = "border-emerald-100 bg-emerald-50 text-emerald-600";
+                          actionTone = "text-emerald-600 bg-emerald-50 border-emerald-100";
                         } else if (log.type === "update") {
                           actionLabel = "修改";
-                          actionTone = "border-blue-100 bg-blue-50 text-blue-600";
+                          actionTone = "text-blue-600 bg-blue-50 border-blue-100";
                         } else if (log.type === "delete") {
                           actionLabel = "删除";
-                          actionTone = "border-rose-100 bg-rose-50 text-rose-600";
+                          actionTone = "text-rose-600 bg-rose-50 border-rose-100";
                         } else if (log.type === "clear") {
                           actionLabel = "清空";
-                          actionTone = "border-amber-100 bg-amber-50 text-amber-600";
+                          actionTone = "text-amber-600 bg-amber-50 border-amber-100";
                         }
                         let changeText = "";
                         if (log.type === "update" && log.before && log.after) {
@@ -5054,16 +5011,15 @@ export default function App() {
                         } else if (log.type === "clear") {
                           changeText = "清空所有体检记录";
                         }
-                        const canRestore =
-                          (log.type === "delete" && log.before) || (log.type === "update" && log.before);
+                        const canRestore = (log.type === "delete" && log.before) || (log.type === "update" && log.before);
                         return (
                           <div
                             key={log.id}
-                            className="flex flex-col gap-3 rounded-[24px] border border-violet-100 bg-white/92 px-4 py-4 shadow-sm"
+                            className="flex flex-col gap-3 rounded-2xl border border-violet-100 bg-white/70 px-4 py-3 shadow-sm"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 text-xs text-slate-500">
-                                <span className={`rounded-full border px-2 py-0.5 text-[11px] ${actionTone}`}>
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <span className={`px-2 py-0.5 rounded-full border text-[11px] ${actionTone}`}>
                                   {actionLabel}
                                 </span>
                                 <span>{new Date(log.timestamp).toLocaleString("zh-CN")}</span>
@@ -5074,19 +5030,19 @@ export default function App() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleRestoreFromLog(log)}
-                                  className="h-8 rounded-xl border-emerald-200 px-3 text-xs text-emerald-600 hover:bg-emerald-50"
+                                  className="h-7 px-2 text-xs border-emerald-200 text-emerald-600 hover:bg-emerald-50"
                                 >
-                                  <RotateCcw className="mr-1 h-3 w-3" />
+                                  <RotateCcw className="w-3 h-3 mr-1" />
                                   恢复
                                 </Button>
                               )}
                             </div>
-                            <div className="grid grid-cols-1 gap-2 text-sm text-slate-700 sm:grid-cols-[120px_1fr]">
-                              <div className="text-slate-500">数据日期</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2 text-sm text-gray-700">
+                              <div className="text-gray-500">数据日期</div>
                               <div>{date}</div>
-                              <div className="text-slate-500">检验指标</div>
+                              <div className="text-gray-500">检验指标</div>
                               <div>{label}</div>
-                              <div className="text-slate-500">变更内容</div>
+                              <div className="text-gray-500">变更内容</div>
                               <div>{changeText || "-"}</div>
                             </div>
                           </div>

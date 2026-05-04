@@ -147,7 +147,6 @@ const GOOGLE_DRIVE_OAUTH_STATE_KEY = "health_google_oauth_state_v1";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const SUPABASE_SYNC_TABLE = import.meta.env.VITE_SUPABASE_SYNC_TABLE || "health_sync_snapshots";
 
 let supabaseClient: SupabaseClient | null = null;
 
@@ -1540,12 +1539,6 @@ interface CloudSyncSnapshot {
 interface ResolvedCloudPayload {
   payload: CloudSyncPayloadState;
   updatedAt: string;
-}
-
-interface SupabaseSyncRow {
-  user_id: string;
-  snapshot: CloudSyncSnapshot;
-  updated_at?: string;
 }
 
 const parseTimeValue = (value?: string | null): number => {
@@ -3374,98 +3367,6 @@ export default function App() {
     }
   };
 
-  const formatSupabaseSyncError = (error: { message?: string } | null) => {
-    const rawMessage = (error?.message || "").trim();
-    if (!rawMessage) {
-      return "同步 Supabase 失败，请稍后重试。";
-    }
-    if (rawMessage.includes("relation") && rawMessage.includes("does not exist")) {
-      return "Supabase 同步表不存在，请先执行建表 SQL。";
-    }
-    return rawMessage;
-  };
-
-  const uploadSnapshotToSupabase = async (
-    snapshot: CloudSyncSnapshot,
-  ): Promise<{ ok: boolean; errorMessage?: string }> => {
-    if (!supabaseEnabled) {
-      return { ok: false, errorMessage: "未检测到 Supabase 配置。" };
-    }
-    if (!activeUserId) {
-      return { ok: false, errorMessage: "当前账号未登录，无法写入 Supabase。" };
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      return { ok: false, errorMessage: "Supabase 客户端不可用。" };
-    }
-
-    const metadata = (supabaseSession?.user.user_metadata || {}) as {
-      display_name?: string;
-      full_name?: string;
-    };
-
-    const { error } = await client
-      .from(SUPABASE_SYNC_TABLE)
-      .upsert(
-        {
-          user_id: activeUserId,
-          snapshot,
-          updated_at: snapshot.updatedAt,
-          schema_version: snapshot.schemaVersion,
-          source: snapshot.source,
-          uploaded_by: {
-            userId: activeUserId,
-            email: supabaseSession?.user.email || "",
-            displayName: metadata.display_name || metadata.full_name || "",
-          },
-        },
-        { onConflict: "user_id" },
-      );
-
-    if (error) {
-      console.error("[CloudSync] supabase upsert snapshot failed", error);
-      return { ok: false, errorMessage: formatSupabaseSyncError(error) };
-    }
-
-    return { ok: true };
-  };
-
-  const fetchSupabaseSnapshot = async (): Promise<ResolvedCloudPayload | null> => {
-    if (!supabaseEnabled || !activeUserId) {
-      return null;
-    }
-
-    const client = getSupabaseClient();
-    if (!client) {
-      return null;
-    }
-
-    const { data, error } = await client
-      .from(SUPABASE_SYNC_TABLE)
-      .select("snapshot,updated_at")
-      .eq("user_id", activeUserId)
-      .limit(1);
-
-    if (error) {
-      console.error("[CloudSync] fetchSupabaseSnapshot query failed", error);
-      return null;
-    }
-
-    const row = Array.isArray(data) && data.length > 0 ? (data[0] as { snapshot?: unknown; updated_at?: string }) : null;
-    if (!row || !row.snapshot) {
-      return null;
-    }
-
-    const resolved = resolveCloudPayload(row.snapshot, row.updated_at || new Date(0).toISOString());
-    if (!resolved) {
-      console.error("[CloudSync] fetchSupabaseSnapshot parse failed", { row });
-      return null;
-    }
-
-    return resolved;
-  };
-
   const fetchCloudSnapshot = async (showAlert = true): Promise<ResolvedCloudPayload | null> => {
     const notify = (message: string) => {
       if (showAlert) {
@@ -3866,13 +3767,6 @@ export default function App() {
         },
         "web",
       );
-
-      const supabaseStatus = await uploadSnapshotToSupabase(snapshot);
-      if (!supabaseStatus.ok) {
-        alert(`Supabase 备份失败：${supabaseStatus.errorMessage || "请稍后重试。"}`);
-        return;
-      }
-
       const payload = {
         fileName: `体检数据手动同步_${date}_${time}.json`,
         json: JSON.stringify(snapshot),
@@ -3880,7 +3774,7 @@ export default function App() {
       const status = await enqueueCloudUpload(effectiveProvider, payload);
       console.log("[CloudSync] manual sync finished", { status });
       if (status === "success") {
-        alert("云端同步完成（Supabase + Google Drive）。");
+        alert("云端同步完成。");
       } else if (status === "waitingAuth") {
         alert("未检测到有效授权，请在云同步面板完成授权后重试。");
       } else {
@@ -3908,43 +3802,7 @@ export default function App() {
     });
     setCloudPulling(true);
     try {
-      let remoteSnapshot = await fetchCloudSnapshot(false);
-      const supabaseSnapshot = await fetchSupabaseSnapshot();
-
-      if (supabaseSnapshot) {
-        const supabaseUpdatedAtMs = parseTimeValue(supabaseSnapshot.updatedAt);
-        const googleUpdatedAtMs = remoteSnapshot ? parseTimeValue(remoteSnapshot.updatedAt) : 0;
-
-        if (supabaseUpdatedAtMs > googleUpdatedAtMs) {
-          const now = new Date();
-          const date = now.toISOString().split("T")[0];
-          const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
-          const bridgeSnapshot: CloudSyncSnapshot = {
-            schemaVersion: CLOUD_SYNC_SCHEMA_VERSION,
-            source: "miniprogram",
-            generatedAt: new Date().toISOString(),
-            updatedAt: supabaseSnapshot.updatedAt,
-            payload: cloneStatePayload(supabaseSnapshot.payload),
-          };
-
-          const bridgeStatus = await enqueueCloudUpload("googleDrive", {
-            fileName: `体检数据桥接同步_${date}_${time}.json`,
-            json: JSON.stringify(bridgeSnapshot),
-          });
-
-          if (bridgeStatus === "waitingAuth") {
-            alert("Google Drive 授权失效，无法执行桥接同步，请先重新授权。");
-            return;
-          }
-          if (bridgeStatus !== "success") {
-            alert("桥接同步失败：无法将 Supabase 最新备份写入 Google Drive。");
-            return;
-          }
-
-          remoteSnapshot = await fetchCloudSnapshot(false);
-        }
-      }
-
+      const remoteSnapshot = await fetchCloudSnapshot(false);
       if (!remoteSnapshot) {
         alert("云端个人文件夹中暂无备份数据。");
         return;
@@ -4292,11 +4150,6 @@ export default function App() {
         json: JSON.stringify(snapshot),
       };
       void (async () => {
-        const supabaseStatus = await uploadSnapshotToSupabase(snapshot);
-        if (!supabaseStatus.ok) {
-          alert(`自动同步失败（Supabase）：${supabaseStatus.errorMessage || "请稍后重试。"}`);
-          return;
-        }
         await enqueueCloudUpload(cloudProvider, payload);
       })();
     }

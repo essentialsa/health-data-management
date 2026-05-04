@@ -1,6 +1,6 @@
 # 体检报告解析服务
 
-基于 FastAPI + PaddleOCR 的体检报告解析服务，支持 PDF/JPG/PNG。
+基于 FastAPI + PaddleOCR + LLM 结构化的体检报告解析服务，支持 PDF/JPG/PNG。
 
 ## 快速开始
 
@@ -68,6 +68,24 @@ https://essentialsa-health-data-ocr.onrender.com
 
 ```text
 Render Dashboard -> New -> Blueprint -> Connect GitHub repo -> Deploy Blueprint
+```
+
+## LLM 结构化配置
+
+当前方案不是直接把图片发给多模态模型，而是：
+1. PaddleOCR 先识别图片/PDF 文本
+2. 再把 OCR 文本交给大模型输出结构化指标
+3. 如果大模型不可用，自动回退到本地规则解析
+
+支持的环境变量：
+
+```bash
+OCR_LLM_ENABLED=true
+OCR_LLM_API_KEY=your-openai-compatible-key
+OCR_LLM_BASE_URL=https://api.openai.com/v1
+OCR_LLM_MODEL=gpt-4o-mini
+OCR_LLM_TIMEOUT_SEC=45
+OCR_LLM_MAX_OUTPUT_TOKENS=1600
 ```
 
 ## 性能参考

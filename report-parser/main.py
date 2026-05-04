@@ -9,6 +9,7 @@ import time
 from threading import Lock
 
 from parser.paddle_engine import PaddleEngine, get_ocr_status
+from parser.llm_structurer import get_llm_structuring_status
 from parser.table_extractor import extract_table_structure
 from parser.date_extractor import extract_report_date
 
@@ -117,6 +118,7 @@ class ParseResponse(BaseModel):
 @app.get("/api/health")
 async def health_check():
     ocr_status = get_ocr_status(USE_MOCK)
+    llm_status = get_llm_structuring_status()
     ocr_ready = ocr_status["available"]
     if not ocr_ready:
         raise HTTPException(
@@ -135,6 +137,7 @@ async def health_check():
         "engine_initialized": engine is not None,
         "startup_warmup_enabled": OCR_WARMUP_ON_STARTUP,
         "engine_config": engine.runtime_config if engine else {},
+        "llm_structuring": llm_status,
     }
 
 
@@ -142,6 +145,7 @@ async def health_check():
 async def service_health_check():
     """Render 健康检查只验证进程存活和 OCR 依赖可导入，不触发模型初始化。"""
     ocr_status = get_ocr_status(USE_MOCK)
+    llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
             status_code=503,
@@ -157,6 +161,7 @@ async def service_health_check():
         "model": ocr_status["engine"],
         "engine_initialized": engine is not None,
         "startup_warmup_enabled": OCR_WARMUP_ON_STARTUP,
+        "llm_structuring": llm_status,
     }
 
 
@@ -164,6 +169,7 @@ async def service_health_check():
 async def ocr_ready_check():
     """手动深度检查：显式初始化 OCR 引擎，仅用于排障，不给 Render 健康检查调用。"""
     ocr_status = get_ocr_status(USE_MOCK)
+    llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
             status_code=503,
@@ -192,6 +198,7 @@ async def ocr_ready_check():
         "engine_initialized": True,
         "init_elapsed_sec": round(time.perf_counter() - init_started_at, 2),
         "engine_config": loaded_engine.runtime_config if loaded_engine else {},
+        "llm_structuring": llm_status,
     }
 
 

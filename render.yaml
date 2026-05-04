@@ -43,6 +43,14 @@ services:
         value: "960"
       - key: OCR_PDF_RENDER_SCALE
         value: "1.0"
+      - key: OCR_LLM_ENABLED
+        value: "true"
+      - key: OCR_LLM_MODEL
+        value: gpt-4o-mini
+      - key: OCR_LLM_TIMEOUT_SEC
+        value: "45"
+      - key: OCR_LLM_MAX_OUTPUT_TOKENS
+        value: "1600"
       - key: LOG_LEVEL
         value: INFO
       - key: ALLOWED_ORIGINS

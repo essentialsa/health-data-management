@@ -1,11 +1,14 @@
 """PaddleOCR 引擎封装 - PaddleOCR 2.7.3（Render 默认 PP-OCRv2）"""
 import gc
 import io
+import logging
 import os
 import re
 from typing import Optional, List, Dict, Any, Iterator, Tuple
 from PIL import Image
 import numpy as np
+
+from parser.llm_structurer import LLMStructurer
 
 try:
     from paddleocr import PaddleOCR
@@ -32,6 +35,8 @@ try:
 except ImportError:
     fitz = None  # type: ignore[assignment]
     PDF_RENDER_AVAILABLE = False
+
+logger = logging.getLogger("medical-report-parser")
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -87,6 +92,7 @@ class PaddleEngine:
         self._ocr = None
         self.runtime_config: Dict[str, Any] = {}
         self.backend = "mock" if use_mock else get_ocr_status(use_mock)["engine"]
+        self._llm_structurer = LLMStructurer()
         self.use_angle_cls = False
         self.max_image_side = int(os.getenv("OCR_MAX_IMAGE_SIDE", "960"))
         self.pdf_render_scale = max(1.0, float(os.getenv("OCR_PDF_RENDER_SCALE", "1.0")))
@@ -173,6 +179,7 @@ class PaddleEngine:
                 "cls_model_dir": cls_model_dir or "auto-download",
                 "max_image_side": self.max_image_side,
                 "pdf_render_scale": self.pdf_render_scale,
+                "llm_structuring": self._llm_structurer.runtime_config,
             }
             return
 
@@ -200,6 +207,7 @@ class PaddleEngine:
             markdown_sections: List[str] = []
             report_date: Optional[str] = None
             all_text_parts: List[str] = []
+            page_contexts: List[Dict[str, Any]] = []
             page_count = 0
 
             for page_index, (page_image, ocr_result) in enumerate(self._iter_ocr_results(file_content, filename)):
@@ -213,6 +221,11 @@ class PaddleEngine:
                     report_date = page_result["reportDate"]
                 if page_result["allText"]:
                     all_text_parts.append(page_result["allText"])
+                page_contexts.append({
+                    "pageIndex": page_index,
+                    "allText": page_result["allText"],
+                    "markdown": page_result["markdown"],
+                })
                 del page_image
                 gc.collect()
 
@@ -221,6 +234,26 @@ class PaddleEngine:
 
             if not report_date and all_text_parts:
                 report_date = self._extract_date(" ".join(all_text_parts))
+
+            llm_result = self._llm_structurer.structure_report(
+                page_count=page_count,
+                report_date_candidate=report_date,
+                page_contexts=page_contexts,
+                heuristic_indicators=indicators,
+            )
+            if llm_result:
+                llm_report_date = llm_result.get("reportDate")
+                llm_indicators = llm_result.get("indicators") or []
+                if llm_report_date:
+                    report_date = llm_report_date
+                if llm_indicators:
+                    indicators = llm_indicators
+                    logger.info(
+                        "ocr_llm_structuring_applied page_count=%s indicator_count=%s model=%s",
+                        page_count,
+                        len(indicators),
+                        self._llm_structurer.runtime_config.get("model"),
+                    )
 
             return {
                 "success": True,

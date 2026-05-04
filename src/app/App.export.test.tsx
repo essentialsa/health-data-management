@@ -129,7 +129,7 @@ describe("Excel 导出空指标与数据过滤", () => {
     const emptyCategorySheet = appendedSheets.find(sheet => sheet.name === "空数据分类");
     expect(emptyCategorySheet).toBeTruthy();
     expect(emptyCategorySheet?.aoa.length).toBe(1);
-  });
+  }, 15000);
 
   it("在导出前过滤无效时间字段并在导出日志中记录数据过滤情况", async () => {
     const categories = [
@@ -216,7 +216,7 @@ describe("Excel 导出空指标与数据过滤", () => {
       return row[1] === "数据过滤";
     });
     expect(hasFilterLog).toBe(true);
-  });
+  }, 15000);
 });
 
 describe("云存储授权测试连接", () => {

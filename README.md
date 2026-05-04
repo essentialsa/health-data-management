@@ -31,7 +31,7 @@
 
 ### ☁️ 云同步
 - **Supabase 认证** — 安全的用户登录和权限管理
-- **Google Drive 备份** — 支持 Google Drive 云端数据备份
+- **本地 + 云端双向同步** — 用户数据仅保存在浏览器本地和 Google Drive 备份中
 - **自动同步** — 可配置导入后自动上传
 
 ### 🎨 UI/UX
@@ -50,7 +50,7 @@
 | **UI 组件** | Radix UI (shadcn/ui) + TailwindCSS |
 | **图表** | Recharts |
 | **认证** | Supabase Auth |
-| **后端解析** | FastAPI + PaddleOCR-VL (Mock) |
+| **后端解析** | FastAPI + PaddleOCR + LLM 结构化 |
 | **云存储** | Google Drive API |
 | **测试** | Vitest + Playwright |
 
@@ -90,7 +90,6 @@ pnpm dev
 # Supabase 配置
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_SUPABASE_SYNC_TABLE=health_sync_snapshots
 
 # Google Drive OAuth
 VITE_GOOGLE_DRIVE_CLIENT_ID=your-client-id

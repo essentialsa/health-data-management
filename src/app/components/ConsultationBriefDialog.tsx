@@ -4,6 +4,8 @@ import { Checkbox } from "@/app/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/app/components/ui/dialog";
 import { cn } from "@/app/components/ui/utils";
 import { ClipboardList, Copy, Download, Sparkles } from "lucide-react";
+import { Input } from "@/app/components/ui/input";
+import { Label } from "@/app/components/ui/label";
 import type { HealthRecord, IndicatorCategory, IndicatorItem } from "@/app/components/AddRecordDialog";
 
 // ---------------------------------------------------------------------------
@@ -23,36 +25,42 @@ type NumericRange = {
   max: number;
 };
 
-type ReportIndicatorRow = {
+type TimelineRecord = {
   categoryName: string;
   indicatorName: string;
-  latestDate: string;
-  latestValue: string;
+  value: string;
   unit: string;
   referenceRange: string;
-  trend: string;
-  status: string;
-  recentValues: string;
   abnormal: boolean;
+  status: string;
 };
 
-type ReportSection = {
-  categoryId: string;
+type TimelineDayGroup = {
+  date: string;
+  records: TimelineRecord[];
+};
+
+type AbnormalItem = {
   categoryName: string;
-  rows: ReportIndicatorRow[];
+  indicatorName: string;
+  value: string;
+  unit: string;
+  status: string;
+  date: string;
 };
 
 type ConsultationReport = {
   title: string;
   generatedAt: string;
+  dateRange: string;
   firstDate: string;
   lastDate: string;
   categoryNames: string[];
   recordCount: number;
   indicatorCount: number;
   abnormalCount: number;
-  sections: ReportSection[];
-  abnormalItems: ReportIndicatorRow[];
+  timelineGroups: TimelineDayGroup[];
+  abnormalItems: AbnormalItem[];
   questions: string[];
 };
 
@@ -87,25 +95,6 @@ const parseNumericRange = (text?: string): NumericRange | null => {
     min: Math.min(min, max),
     max: Math.max(min, max),
   };
-};
-
-const findIndicatorRecords = (records: HealthRecord[], indicatorId: string) =>
-  records
-    .filter(record => record.indicatorType === indicatorId)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-const describeTrend = (records: HealthRecord[]) => {
-  if (records.length < 2) {
-    return "样本不足，建议继续追踪。";
-  }
-  const latest = records[records.length - 1];
-  const previous = records[records.length - 2];
-  const delta = latest.value - previous.value;
-  if (Math.abs(delta) < 0.001) {
-    return "与上次基本持平。";
-  }
-  const arrow = delta > 0 ? "↑" : "↓";
-  return `较上次 ${arrow}${formatNumber(Math.abs(delta))}`;
 };
 
 const describeRangeStatus = (item: IndicatorItem, latestValue: number) => {
@@ -147,14 +136,28 @@ const questionLines = [
 const buildConsultationReport = ({
   selectedCategories,
   records,
+  dateFrom,
+  dateTo,
 }: {
   selectedCategories: IndicatorCategory[];
   records: HealthRecord[];
+  dateFrom: string;
+  dateTo: string;
 }): ConsultationReport | null => {
   const selectedIndicatorIds = selectedCategories.flatMap(category => category.items.map(item => item.id));
-  const scopedRecords = records
-    .filter(record => selectedIndicatorIds.includes(record.indicatorType))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Filter by category
+  let scopedRecords = records.filter(record => selectedIndicatorIds.includes(record.indicatorType));
+
+  // Filter by date range
+  if (dateFrom) {
+    scopedRecords = scopedRecords.filter(record => record.date >= dateFrom);
+  }
+  if (dateTo) {
+    scopedRecords = scopedRecords.filter(record => record.date <= dateTo);
+  }
+
+  scopedRecords.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   if (scopedRecords.length === 0) {
     return null;
@@ -164,74 +167,88 @@ const buildConsultationReport = ({
   const lastDate = scopedRecords[scopedRecords.length - 1].date;
   const generatedAt = new Date().toLocaleString("zh-CN");
 
-  const sections: ReportSection[] = [];
-  const abnormalItems: ReportIndicatorRow[] = [];
-  let indicatorCount = 0;
+  // Build indicator lookup: id -> { item, categoryName }
+  const indicatorLookup = new Map<string, { item: IndicatorItem; categoryName: string }>();
+  selectedCategories.forEach(cat => {
+    cat.items.forEach(item => {
+      indicatorLookup.set(item.id, { item, categoryName: cat.name });
+    });
+  });
 
-  selectedCategories.forEach(category => {
-    const categoryIndicatorIds = category.items.map(item => item.id);
-    const categoryRecords = scopedRecords.filter(record => categoryIndicatorIds.includes(record.indicatorType));
-    if (categoryRecords.length === 0) {
-      return;
-    }
+  // Count unique indicators
+  const seenIndicators = new Set<string>();
+  scopedRecords.forEach(r => seenIndicators.add(r.indicatorType));
+  const indicatorCount = seenIndicators.size;
 
-    const rows: ReportIndicatorRow[] = [];
+  // Group records by date
+  const dateMap = new Map<string, HealthRecord[]>();
+  scopedRecords.forEach(record => {
+    const existing = dateMap.get(record.date) || [];
+    existing.push(record);
+    dateMap.set(record.date, existing);
+  });
 
-    category.items.forEach(item => {
-      const indicatorRecords = findIndicatorRecords(scopedRecords, item.id);
-      if (indicatorRecords.length === 0) {
-        return;
-      }
+  const sortedDates = Array.from(dateMap.keys()).sort();
+  const timelineGroups: TimelineDayGroup[] = [];
+  const abnormalItems: AbnormalItem[] = [];
+  const seenAbnormal = new Set<string>();
 
-      indicatorCount += 1;
-      const latest = indicatorRecords[indicatorRecords.length - 1];
-      const recent = indicatorRecords.slice(-6);
-      const recentValues = recent
-        .map(record => `${record.date}：${formatNumber(record.value)}`)
-        .join("；");
-      const trend = describeTrend(indicatorRecords);
-      const rangeStatus = describeRangeStatus(item, latest.value);
+  sortedDates.forEach(date => {
+    const dayRecords = dateMap.get(date)!;
+    const timelineRecords: TimelineRecord[] = [];
+
+    dayRecords.forEach(record => {
+      const meta = indicatorLookup.get(record.indicatorType);
+      if (!meta) return;
+      const { item, categoryName } = meta;
+      const rangeStatus = describeRangeStatus(item, record.value);
       const abnormal = !!(rangeStatus && (rangeStatus.includes("高于") || rangeStatus.includes("低于")));
 
-      const row: ReportIndicatorRow = {
-        categoryName: category.name,
+      timelineRecords.push({
+        categoryName,
         indicatorName: item.label,
-        latestDate: latest.date,
-        latestValue: formatNumber(latest.value),
+        value: formatNumber(record.value),
         unit: item.unit ?? "",
         referenceRange: item.referenceRange ?? "",
-        trend,
-        status: rangeStatus ?? "未配置参考范围",
-        recentValues,
         abnormal,
-      };
+        status: rangeStatus ?? "未配置参考范围",
+      });
 
-      rows.push(row);
-
-      if (abnormal) {
-        abnormalItems.push(row);
+      if (abnormal && !seenAbnormal.has(item.label)) {
+        seenAbnormal.add(item.label);
+        abnormalItems.push({
+          categoryName,
+          indicatorName: item.label,
+          value: formatNumber(record.value),
+          unit: item.unit ?? "",
+          status: rangeStatus!,
+          date,
+        });
       }
     });
 
-    if (rows.length > 0) {
-      sections.push({
-        categoryId: category.id,
-        categoryName: category.name,
-        rows,
-      });
-    }
+    timelineGroups.push({ date, records: timelineRecords });
   });
+
+  const dateRangeLabel = dateFrom && dateTo
+    ? `${dateFrom} ~ ${dateTo}`
+    : dateFrom
+      ? `${dateFrom} ~ 至今`
+      : dateTo
+        ? `起始 ~ ${dateTo}`
+        : "全部";
 
   return {
     title: "个人健康档案问诊报告",
     generatedAt,
+    dateRange: dateRangeLabel,
     firstDate,
     lastDate,
     categoryNames: selectedCategories.map(c => c.name),
     recordCount: scopedRecords.length,
     indicatorCount,
     abnormalCount: abnormalItems.length,
-    sections,
+    timelineGroups,
     abnormalItems,
     questions: [...questionLines],
   };
@@ -246,7 +263,8 @@ const buildReportPlainText = (report: ConsultationReport): string => {
 
   lines.push("【个人健康档案问诊报告】");
   lines.push(`生成时间：${report.generatedAt}`);
-  lines.push(`覆盖周期：${report.firstDate} ~ ${report.lastDate}`);
+  lines.push(`时间范围：${report.dateRange}`);
+  lines.push(`实际周期：${report.firstDate} ~ ${report.lastDate}`);
   lines.push(`指标分类：${report.categoryNames.join("、")}`);
   lines.push(`数据条数：${report.recordCount}`);
   lines.push(`异常指标数：${report.abnormalCount}`);
@@ -255,25 +273,23 @@ const buildReportPlainText = (report: ConsultationReport): string => {
   lines.push("【异常关注项】");
   if (report.abnormalItems.length > 0) {
     report.abnormalItems.forEach(item => {
-      lines.push(`- ${item.categoryName} / ${item.indicatorName}：${item.status}，最近值 ${item.latestValue} ${item.unit}`);
+      lines.push(`- ${item.categoryName} / ${item.indicatorName}：${item.status}，数值 ${item.value} ${item.unit}（${item.date}）`);
     });
   } else {
     lines.push("- 暂未发现超出参考范围的异常项，建议继续规律复查。");
   }
   lines.push("");
 
-  lines.push("【指标摘要】");
-  report.sections.forEach(section => {
-    lines.push(`【${section.categoryName}】`);
-    section.rows.forEach(row => {
-      const parts = [`最新 ${row.latestValue} ${row.unit}`];
-      if (row.trend && !row.trend.startsWith("样本不足")) {
-        parts.push(row.trend);
+  lines.push("【按日期明细】");
+  report.timelineGroups.forEach(group => {
+    lines.push(`── ${group.date} ──`);
+    group.records.forEach(record => {
+      const parts = [`${record.value} ${record.unit}`];
+      if (record.referenceRange) {
+        parts.push(`参考范围 ${record.referenceRange}`);
       }
-      if (row.abnormal) {
-        parts.push(row.status);
-      }
-      lines.push(`- ${row.indicatorName}：${parts.join("，")}`);
+      parts.push(record.abnormal ? record.status : "正常");
+      lines.push(`- ${record.categoryName} / ${record.indicatorName}：${parts.join("，")}`);
     });
     lines.push("");
   });
@@ -291,33 +307,33 @@ const buildReportPlainText = (report: ConsultationReport): string => {
 // ---------------------------------------------------------------------------
 
 const buildReportHtml = (report: ConsultationReport): string => {
-  const sectionRows = report.sections
-    .map(section => {
-      const bodyRows = section.rows
+  const timelineSections = report.timelineGroups
+    .map(group => {
+      const bodyRows = group.records
         .map(
-          row => `
+          record => `
           <tr>
-            <td>${escapeHtml(row.indicatorName)}</td>
-            <td class="numeric">${escapeHtml(row.latestValue)}</td>
-            <td>${escapeHtml(row.unit || "-")}</td>
-            <td>${escapeHtml(row.referenceRange || "-")}</td>
-            <td>${escapeHtml(row.trend)}</td>
-            <td class="${row.abnormal ? "abnormal" : ""}">${escapeHtml(row.status)}</td>
+            <td>${escapeHtml(record.categoryName)}</td>
+            <td>${escapeHtml(record.indicatorName)}</td>
+            <td class="numeric">${escapeHtml(record.value)}</td>
+            <td>${escapeHtml(record.unit || "-")}</td>
+            <td>${escapeHtml(record.referenceRange || "-")}</td>
+            <td class="${record.abnormal ? "abnormal" : ""}">${escapeHtml(record.status)}</td>
           </tr>`,
         )
         .join("");
 
       return `
-      <section class="report-section">
-        <h3>${escapeHtml(section.categoryName)}</h3>
+      <section class="date-section">
+        <h3>${escapeHtml(group.date)}</h3>
         <table class="report-table">
           <thead>
             <tr>
-              <th>指标</th>
-              <th class="numeric">最近值</th>
+              <th>指标分类</th>
+              <th>指标名称</th>
+              <th class="numeric">数值</th>
               <th>单位</th>
               <th>参考范围</th>
-              <th>趋势</th>
               <th>状态</th>
             </tr>
           </thead>
@@ -332,12 +348,12 @@ const buildReportHtml = (report: ConsultationReport): string => {
       ? `<ul>${report.abnormalItems
           .map(
             item =>
-              `<li>${escapeHtml(item.categoryName)} / ${escapeHtml(item.indicatorName)}：${escapeHtml(item.status)}，最近值 ${escapeHtml(item.latestValue)} ${escapeHtml(item.unit)}</li>`,
+              `<li>${escapeHtml(item.categoryName)} / ${escapeHtml(item.indicatorName)}：${escapeHtml(item.status)}，数值 ${escapeHtml(item.value)} ${escapeHtml(item.unit)}（${escapeHtml(item.date)}）</li>`,
           )
           .join("")}</ul>`
       : `<p>暂未发现超出参考范围的异常项，建议继续规律复查。</p>`;
 
-  const questionsHtml = report.questions.map((q, i) => `<li>${escapeHtml(q)}</li>`).join("");
+  const questionsHtml = report.questions.map(q => `<li>${escapeHtml(q)}</li>`).join("");
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -431,16 +447,18 @@ const buildReportHtml = (report: ConsultationReport): string => {
       margin-bottom: 4px;
     }
 
-    .report-section {
+    .date-section {
       margin-bottom: 20px;
       page-break-inside: avoid;
     }
 
-    .report-section h3 {
+    .date-section h3 {
       font-size: 15px;
       font-weight: 600;
       color: #222;
       margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e5e7eb;
     }
 
     .report-table {
@@ -521,7 +539,7 @@ const buildReportHtml = (report: ConsultationReport): string => {
         padding: 0;
       }
 
-      .report-section {
+      .date-section {
         page-break-inside: avoid;
       }
     }
@@ -537,8 +555,8 @@ const buildReportHtml = (report: ConsultationReport): string => {
     <dl class="info-grid">
       <dt>生成时间</dt>
       <dd>${escapeHtml(report.generatedAt)}</dd>
-      <dt>覆盖周期</dt>
-      <dd>${escapeHtml(report.firstDate)} ~ ${escapeHtml(report.lastDate)}</dd>
+      <dt>时间范围</dt>
+      <dd>${escapeHtml(report.dateRange)}</dd>
       <dt>指标分类</dt>
       <dd>${escapeHtml(report.categoryNames.join("、"))}</dd>
       <dt>数据条数</dt>
@@ -548,7 +566,7 @@ const buildReportHtml = (report: ConsultationReport): string => {
     <div class="summary-box">
       <p>纳入指标数：<strong>${report.indicatorCount}</strong></p>
       <p>异常指标数：<strong>${report.abnormalCount}</strong></p>
-      <p>最近检测日期：<strong>${escapeHtml(report.lastDate)}</strong></p>
+      <p>实际周期：<strong>${escapeHtml(report.firstDate)} ~ ${escapeHtml(report.lastDate)}</strong></p>
       <p>本报告基于用户录入或导入的健康指标数据自动整理，仅用于问诊沟通辅助，不替代医生诊断。</p>
     </div>
 
@@ -557,7 +575,7 @@ const buildReportHtml = (report: ConsultationReport): string => {
       ${abnormalHtml}
     </div>
 
-    ${sectionRows}
+    ${timelineSections}
 
     <div class="questions-section">
       <h2>建议沟通重点</h2>
@@ -580,6 +598,8 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
   const [open, setOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("multiple");
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [report, setReport] = useState<ConsultationReport | null>(null);
   const [plainText, setPlainText] = useState("");
   const [message, setMessage] = useState("");
@@ -598,6 +618,8 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
   const resetDialog = () => {
     setSelectionMode("multiple");
     setSelectedCategoryIds([]);
+    setDateFrom("");
+    setDateTo("");
     setReport(null);
     setPlainText("");
     setMessage("");
@@ -638,6 +660,8 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
     const nextReport = buildConsultationReport({
       selectedCategories,
       records,
+      dateFrom,
+      dateTo,
     });
 
     if (!nextReport) {
@@ -783,6 +807,40 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
             )}
           </div>
 
+          <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3">
+            <div className="text-sm font-medium text-sky-800 mb-2">时间范围（可选）</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="consult-date-from" className="text-sm text-gray-600">从</Label>
+              <Input
+                id="consult-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-8 w-[150px] border-sky-200 focus:border-sky-400 focus:ring-sky-400"
+              />
+              <Label htmlFor="consult-date-to" className="text-sm text-gray-600">至</Label>
+              <Input
+                id="consult-date-to"
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-8 w-[150px] border-sky-200 focus:border-sky-400 focus:ring-sky-400"
+              />
+              {(dateFrom || dateTo) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-gray-400"
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                >
+                  清除
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">不选择则导出全部数据</p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" onClick={handleGenerateReport} disabled={categoriesWithData.length === 0}>
               生成报告
@@ -825,10 +883,8 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                       <span className="font-medium">{report.generatedAt}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400">覆盖周期：</span>
-                      <span className="font-medium">
-                        {report.firstDate} ~ {report.lastDate}
-                      </span>
+                      <span className="text-gray-400">时间范围：</span>
+                      <span className="font-medium">{report.dateRange}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">指标分类：</span>
@@ -849,7 +905,7 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                       异常指标数：<strong className="text-gray-900">{report.abnormalCount}</strong>
                     </p>
                     <p>
-                      最近检测日期：<strong className="text-gray-900">{report.lastDate}</strong>
+                      实际周期：<strong className="text-gray-900">{report.firstDate} ~ {report.lastDate}</strong>
                     </p>
                     <p className="mt-1 text-gray-400 text-xs">
                       本报告基于用户录入或导入的健康指标数据自动整理，仅用于问诊沟通辅助，不替代医生诊断。
@@ -863,7 +919,7 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                       <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
                         {report.abnormalItems.map((item, idx) => (
                           <li key={idx}>
-                            {item.categoryName} / {item.indicatorName}：{item.status}，最近值 {item.latestValue} {item.unit}
+                            {item.categoryName} / {item.indicatorName}：{item.status}，数值 {item.value} {item.unit}（{item.date}）
                           </li>
                         ))}
                       </ul>
@@ -872,38 +928,38 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                     )}
                   </div>
 
-                  {/* Indicator sections with three-line tables */}
-                  {report.sections.map(section => (
-                    <section key={section.categoryId} className="mt-6">
-                      <h3 className="text-base font-semibold text-gray-900">{section.categoryName}</h3>
+                  {/* Timeline sections */}
+                  {report.timelineGroups.map(group => (
+                    <section key={group.date} className="mt-6">
+                      <h3 className="text-base font-semibold text-gray-900 pb-1 border-b border-gray-200">{group.date}</h3>
 
                       <table className="mt-2 w-full border-collapse border-t-2 border-b-2 border-gray-900 text-sm">
                         <thead className="border-b border-gray-900">
                           <tr>
-                            <th className="py-2 pr-3 text-left font-medium">指标</th>
-                            <th className="py-2 px-3 text-right font-medium">最近值</th>
+                            <th className="py-2 pr-3 text-left font-medium">指标分类</th>
+                            <th className="py-2 px-3 text-left font-medium">指标名称</th>
+                            <th className="py-2 px-3 text-right font-medium">数值</th>
                             <th className="py-2 px-3 text-left font-medium">单位</th>
                             <th className="py-2 px-3 text-left font-medium">参考范围</th>
-                            <th className="py-2 px-3 text-left font-medium">趋势</th>
                             <th className="py-2 pl-3 text-left font-medium">状态</th>
                           </tr>
                         </thead>
 
                         <tbody>
-                          {section.rows.map(row => (
-                            <tr key={`${section.categoryId}_${row.indicatorName}`}>
-                              <td className="py-2 pr-3">{row.indicatorName}</td>
-                              <td className="py-2 px-3 text-right tabular-nums">{row.latestValue}</td>
-                              <td className="py-2 px-3">{row.unit || "-"}</td>
-                              <td className="py-2 px-3">{row.referenceRange || "-"}</td>
-                              <td className="py-2 px-3">{row.trend}</td>
+                          {group.records.map((record, idx) => (
+                            <tr key={`${group.date}_${record.indicatorName}_${idx}`}>
+                              <td className="py-2 pr-3 text-gray-500">{record.categoryName}</td>
+                              <td className="py-2 px-3">{record.indicatorName}</td>
+                              <td className="py-2 px-3 text-right tabular-nums">{record.value}</td>
+                              <td className="py-2 px-3">{record.unit || "-"}</td>
+                              <td className="py-2 px-3">{record.referenceRange || "-"}</td>
                               <td
                                 className={cn(
                                   "py-2 pl-3",
-                                  row.abnormal ? "text-red-700" : "text-gray-700",
+                                  record.abnormal ? "text-red-700" : "text-gray-700",
                                 )}
                               >
-                                {row.status || "未配置参考范围"}
+                                {record.status || "未配置参考范围"}
                               </td>
                             </tr>
                           ))}

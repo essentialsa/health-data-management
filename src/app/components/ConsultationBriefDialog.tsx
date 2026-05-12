@@ -335,8 +335,9 @@ const buildReportHtml = (report: ConsultationReport): string => {
     .map(table => {
       const headerCells = table.indicators
         .map(ind => {
-          const ref = ind.referenceRange ? ` (${escapeHtml(ind.referenceRange)})` : "";
-          return `<th class="numeric">${escapeHtml(ind.name)}${ref}<br><small>${escapeHtml(ind.unit || "")}</small></th>`;
+          const unitPart = ind.unit ? ` <span class="unit-label">(${escapeHtml(ind.unit)})</span>` : "";
+          const ref = ind.referenceRange ? `<br><small>${escapeHtml(ind.referenceRange)}</small>` : "";
+          return `<th class="numeric">${escapeHtml(ind.name)}${unitPart}${ref}</th>`;
         })
         .join("");
 
@@ -474,15 +475,16 @@ const buildReportHtml = (report: ConsultationReport): string => {
     }
 
     .pivot-section {
-      margin-bottom: 20px;
+      margin-bottom: 24px;
       page-break-inside: avoid;
     }
 
     .pivot-section h3 {
-      font-size: 15px;
-      font-weight: 600;
-      color: #222;
-      margin-bottom: 6px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #111;
+      text-align: center;
+      margin-bottom: 8px;
     }
 
     .report-table {
@@ -502,11 +504,20 @@ const buildReportHtml = (report: ConsultationReport): string => {
     .report-table td {
       border: none;
       padding: 8px 10px;
-      text-align: left;
+      text-align: center;
+      font-weight: inherit;
+    }
+
+    .report-table th {
+      font-weight: 700;
+    }
+
+    .report-table .unit-label {
+      font-weight: 700;
+      color: inherit;
     }
 
     .report-table .numeric {
-      text-align: right;
       font-variant-numeric: tabular-nums;
     }
 
@@ -954,19 +965,19 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
 
                   {/* Pivot tables */}
                   {report.pivotTables.map(table => (
-                    <section key={table.categoryId} className="mt-6">
-                      <h3 className="text-base font-semibold text-gray-900">{table.categoryName}</h3>
+                    <section key={table.categoryId} className="mt-8">
+                      <h3 className="text-lg font-bold text-gray-900 text-center mb-2">{table.categoryName}</h3>
 
                       <div className="mt-2 overflow-x-auto">
                         <table className="w-full border-collapse border-t-2 border-b-2 border-gray-900 text-sm">
                           <thead className="border-b border-gray-900">
                             <tr>
-                              <th className="py-2 pr-3 text-left font-medium whitespace-nowrap">日期</th>
+                              <th className="py-2 px-3 text-center font-bold whitespace-nowrap">日期</th>
                               {table.indicators.map(ind => (
-                                <th key={ind.name} className="py-2 px-3 text-right font-medium whitespace-nowrap">
+                                <th key={ind.name} className="py-2 px-3 text-center font-bold whitespace-nowrap">
                                   {ind.name}
-                                  {ind.referenceRange && <span className="text-xs text-gray-400 ml-1">({ind.referenceRange})</span>}
-                                  {ind.unit && <span className="block text-xs font-normal text-gray-400">{ind.unit}</span>}
+                                  {ind.unit && <span className="font-bold"> ({ind.unit})</span>}
+                                  {ind.referenceRange && <span className="block text-xs font-normal text-gray-400">{ind.referenceRange}</span>}
                                 </th>
                               ))}
                             </tr>
@@ -975,12 +986,12 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                           <tbody>
                             {table.dates.map((date, rowIdx) => (
                               <tr key={date}>
-                                <td className="py-2 pr-3 whitespace-nowrap">{date}</td>
+                                <td className="py-2 px-3 text-center whitespace-nowrap">{date}</td>
                                 {table.rows[rowIdx].map((cell, colIdx) => (
                                   <td
                                     key={colIdx}
                                     className={cn(
-                                      "py-2 px-3 text-right tabular-nums",
+                                      "py-2 px-3 text-center tabular-nums",
                                       cell?.abnormal ? "text-red-700 font-medium" : "text-gray-700",
                                     )}
                                   >

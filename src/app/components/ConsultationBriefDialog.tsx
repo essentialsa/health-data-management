@@ -25,19 +25,23 @@ type NumericRange = {
   max: number;
 };
 
-type TimelineRecord = {
-  categoryName: string;
-  indicatorName: string;
+type PivotCell = {
   value: string;
-  unit: string;
-  referenceRange: string;
   abnormal: boolean;
-  status: string;
 };
 
-type TimelineDayGroup = {
-  date: string;
-  records: TimelineRecord[];
+type PivotIndicator = {
+  name: string;
+  unit: string;
+  referenceRange: string;
+};
+
+type PivotTable = {
+  categoryId: string;
+  categoryName: string;
+  indicators: PivotIndicator[];
+  dates: string[];
+  rows: (PivotCell | null)[][];
 };
 
 type AbnormalItem = {
@@ -59,7 +63,7 @@ type ConsultationReport = {
   recordCount: number;
   indicatorCount: number;
   abnormalCount: number;
-  timelineGroups: TimelineDayGroup[];
+  pivotTables: PivotTable[];
   abnormalItems: AbnormalItem[];
   questions: string[];
 };
@@ -146,10 +150,8 @@ const buildConsultationReport = ({
 }): ConsultationReport | null => {
   const selectedIndicatorIds = selectedCategories.flatMap(category => category.items.map(item => item.id));
 
-  // Filter by category
   let scopedRecords = records.filter(record => selectedIndicatorIds.includes(record.indicatorType));
 
-  // Filter by date range
   if (dateFrom) {
     scopedRecords = scopedRecords.filter(record => record.date >= dateFrom);
   }
@@ -157,77 +159,96 @@ const buildConsultationReport = ({
     scopedRecords = scopedRecords.filter(record => record.date <= dateTo);
   }
 
-  scopedRecords.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
   if (scopedRecords.length === 0) {
     return null;
   }
+
+  scopedRecords.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const firstDate = scopedRecords[0].date;
   const lastDate = scopedRecords[scopedRecords.length - 1].date;
   const generatedAt = new Date().toLocaleString("zh-CN");
 
-  // Build indicator lookup: id -> { item, categoryName }
-  const indicatorLookup = new Map<string, { item: IndicatorItem; categoryName: string }>();
+  // Build indicator lookup
+  const indicatorLookup = new Map<string, IndicatorItem>();
   selectedCategories.forEach(cat => {
     cat.items.forEach(item => {
-      indicatorLookup.set(item.id, { item, categoryName: cat.name });
+      indicatorLookup.set(item.id, item);
     });
   });
 
-  // Count unique indicators
   const seenIndicators = new Set<string>();
   scopedRecords.forEach(r => seenIndicators.add(r.indicatorType));
   const indicatorCount = seenIndicators.size;
 
-  // Group records by date
-  const dateMap = new Map<string, HealthRecord[]>();
-  scopedRecords.forEach(record => {
-    const existing = dateMap.get(record.date) || [];
-    existing.push(record);
-    dateMap.set(record.date, existing);
-  });
-
-  const sortedDates = Array.from(dateMap.keys()).sort();
-  const timelineGroups: TimelineDayGroup[] = [];
+  // Build one pivot table per category
+  const pivotTables: PivotTable[] = [];
   const abnormalItems: AbnormalItem[] = [];
   const seenAbnormal = new Set<string>();
 
-  sortedDates.forEach(date => {
-    const dayRecords = dateMap.get(date)!;
-    const timelineRecords: TimelineRecord[] = [];
+  selectedCategories.forEach(category => {
+    const categoryItemIds = category.items.map(item => item.id);
+    const categoryRecords = scopedRecords.filter(r => categoryItemIds.includes(r.indicatorType));
+    if (categoryRecords.length === 0) return;
 
-    dayRecords.forEach(record => {
-      const meta = indicatorLookup.get(record.indicatorType);
-      if (!meta) return;
-      const { item, categoryName } = meta;
-      const rangeStatus = describeRangeStatus(item, record.value);
-      const abnormal = !!(rangeStatus && (rangeStatus.includes("高于") || rangeStatus.includes("低于")));
+    // Determine which indicators and dates appear in this category
+    const catDates = Array.from(new Set(categoryRecords.map(r => r.date))).sort();
+    const catIndicatorIds = Array.from(
+      new Set(categoryRecords.map(r => r.indicatorType)),
+    );
+    // Preserve category item order
+    const orderedIndicators = category.items.filter(item => catIndicatorIds.includes(item.id));
 
-      timelineRecords.push({
-        categoryName,
-        indicatorName: item.label,
-        value: formatNumber(record.value),
-        unit: item.unit ?? "",
-        referenceRange: item.referenceRange ?? "",
-        abnormal,
-        status: rangeStatus ?? "未配置参考范围",
-      });
+    const indicators: PivotIndicator[] = orderedIndicators.map(item => ({
+      name: item.label,
+      unit: item.unit ?? "",
+      referenceRange: item.referenceRange ?? "",
+    }));
 
-      if (abnormal && !seenAbnormal.has(item.label)) {
-        seenAbnormal.add(item.label);
-        abnormalItems.push({
-          categoryName,
-          indicatorName: item.label,
-          value: formatNumber(record.value),
-          unit: item.unit ?? "",
-          status: rangeStatus!,
-          date,
-        });
+    // Build lookup: date -> indicatorId -> record
+    const cellMap = new Map<string, Map<string, HealthRecord>>();
+    categoryRecords.forEach(record => {
+      if (!cellMap.has(record.date)) {
+        cellMap.set(record.date, new Map());
       }
+      cellMap.get(record.date)!.set(record.indicatorType, record);
     });
 
-    timelineGroups.push({ date, records: timelineRecords });
+    // Build rows
+    const rows: (PivotCell | null)[][] = catDates.map(date => {
+      const dateCells = cellMap.get(date)!;
+      return orderedIndicators.map(item => {
+        const record = dateCells.get(item.id);
+        if (!record) return null;
+        const rangeStatus = describeRangeStatus(item, record.value);
+        const abnormal = !!(rangeStatus && (rangeStatus.includes("高于") || rangeStatus.includes("低于")));
+
+        if (abnormal) {
+          const abKey = `${category.name}_${item.label}`;
+          if (!seenAbnormal.has(abKey)) {
+            seenAbnormal.add(abKey);
+            abnormalItems.push({
+              categoryName: category.name,
+              indicatorName: item.label,
+              value: formatNumber(record.value),
+              unit: item.unit ?? "",
+              status: rangeStatus!,
+              date,
+            });
+          }
+        }
+
+        return { value: formatNumber(record.value), abnormal };
+      });
+    });
+
+    pivotTables.push({
+      categoryId: category.id,
+      categoryName: category.name,
+      indicators,
+      dates: catDates,
+      rows,
+    });
   });
 
   const dateRangeLabel = dateFrom && dateTo
@@ -248,7 +269,7 @@ const buildConsultationReport = ({
     recordCount: scopedRecords.length,
     indicatorCount,
     abnormalCount: abnormalItems.length,
-    timelineGroups,
+    pivotTables,
     abnormalItems,
     questions: [...questionLines],
   };
@@ -280,16 +301,19 @@ const buildReportPlainText = (report: ConsultationReport): string => {
   }
   lines.push("");
 
-  lines.push("【按日期明细】");
-  report.timelineGroups.forEach(group => {
-    lines.push(`── ${group.date} ──`);
-    group.records.forEach(record => {
-      const parts = [`${record.value} ${record.unit}`];
-      if (record.referenceRange) {
-        parts.push(`参考范围 ${record.referenceRange}`);
-      }
-      parts.push(record.abnormal ? record.status : "正常");
-      lines.push(`- ${record.categoryName} / ${record.indicatorName}：${parts.join("，")}`);
+  report.pivotTables.forEach(table => {
+    lines.push(`【${table.categoryName}】`);
+    // Header
+    const header = ["日期", ...table.indicators.map(ind => ind.name)];
+    lines.push(header.join("\t"));
+    // Rows
+    table.dates.forEach((date, rowIdx) => {
+      const cells = table.rows[rowIdx].map(cell => {
+        if (!cell) return "-";
+        const suffix = cell.abnormal ? "↑" : "";
+        return `${cell.value}${suffix}`;
+      });
+      lines.push([date, ...cells].join("\t"));
     });
     lines.push("");
   });
@@ -307,34 +331,36 @@ const buildReportPlainText = (report: ConsultationReport): string => {
 // ---------------------------------------------------------------------------
 
 const buildReportHtml = (report: ConsultationReport): string => {
-  const timelineSections = report.timelineGroups
-    .map(group => {
-      const bodyRows = group.records
-        .map(
-          record => `
-          <tr>
-            <td>${escapeHtml(record.categoryName)}</td>
-            <td>${escapeHtml(record.indicatorName)}</td>
-            <td class="numeric">${escapeHtml(record.value)}</td>
-            <td>${escapeHtml(record.unit || "-")}</td>
-            <td>${escapeHtml(record.referenceRange || "-")}</td>
-            <td class="${record.abnormal ? "abnormal" : ""}">${escapeHtml(record.status)}</td>
-          </tr>`,
-        )
+  const pivotSections = report.pivotTables
+    .map(table => {
+      const headerCells = table.indicators
+        .map(ind => {
+          const ref = ind.referenceRange ? ` (${escapeHtml(ind.referenceRange)})` : "";
+          return `<th class="numeric">${escapeHtml(ind.name)}${ref}<br><small>${escapeHtml(ind.unit || "")}</small></th>`;
+        })
+        .join("");
+
+      const bodyRows = table.dates
+        .map((date, rowIdx) => {
+          const cells = table.rows[rowIdx]
+            .map(cell => {
+              if (!cell) return '<td class="numeric">-</td>';
+              const cls = cell.abnormal ? 'numeric abnormal' : 'numeric';
+              return `<td class="${cls}">${escapeHtml(cell.value)}</td>`;
+            })
+            .join("");
+          return `<tr><td>${escapeHtml(date)}</td>${cells}</tr>`;
+        })
         .join("");
 
       return `
-      <section class="date-section">
-        <h3>${escapeHtml(group.date)}</h3>
+      <section class="pivot-section">
+        <h3>${escapeHtml(table.categoryName)}</h3>
         <table class="report-table">
           <thead>
             <tr>
-              <th>指标分类</th>
-              <th>指标名称</th>
-              <th class="numeric">数值</th>
-              <th>单位</th>
-              <th>参考范围</th>
-              <th>状态</th>
+              <th>日期</th>
+              ${headerCells}
             </tr>
           </thead>
           <tbody>${bodyRows}</tbody>
@@ -447,18 +473,16 @@ const buildReportHtml = (report: ConsultationReport): string => {
       margin-bottom: 4px;
     }
 
-    .date-section {
+    .pivot-section {
       margin-bottom: 20px;
       page-break-inside: avoid;
     }
 
-    .date-section h3 {
+    .pivot-section h3 {
       font-size: 15px;
       font-weight: 600;
       color: #222;
       margin-bottom: 6px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid #e5e7eb;
     }
 
     .report-table {
@@ -539,7 +563,7 @@ const buildReportHtml = (report: ConsultationReport): string => {
         padding: 0;
       }
 
-      .date-section {
+      .pivot-section {
         page-break-inside: avoid;
       }
     }
@@ -575,7 +599,7 @@ const buildReportHtml = (report: ConsultationReport): string => {
       ${abnormalHtml}
     </div>
 
-    ${timelineSections}
+    ${pivotSections}
 
     <div class="questions-section">
       <h2>建议沟通重点</h2>
@@ -928,43 +952,46 @@ export function ConsultationBriefDialog({ categories, records, triggerClassName 
                     )}
                   </div>
 
-                  {/* Timeline sections */}
-                  {report.timelineGroups.map(group => (
-                    <section key={group.date} className="mt-6">
-                      <h3 className="text-base font-semibold text-gray-900 pb-1 border-b border-gray-200">{group.date}</h3>
+                  {/* Pivot tables */}
+                  {report.pivotTables.map(table => (
+                    <section key={table.categoryId} className="mt-6">
+                      <h3 className="text-base font-semibold text-gray-900">{table.categoryName}</h3>
 
-                      <table className="mt-2 w-full border-collapse border-t-2 border-b-2 border-gray-900 text-sm">
-                        <thead className="border-b border-gray-900">
-                          <tr>
-                            <th className="py-2 pr-3 text-left font-medium">指标分类</th>
-                            <th className="py-2 px-3 text-left font-medium">指标名称</th>
-                            <th className="py-2 px-3 text-right font-medium">数值</th>
-                            <th className="py-2 px-3 text-left font-medium">单位</th>
-                            <th className="py-2 px-3 text-left font-medium">参考范围</th>
-                            <th className="py-2 pl-3 text-left font-medium">状态</th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {group.records.map((record, idx) => (
-                            <tr key={`${group.date}_${record.indicatorName}_${idx}`}>
-                              <td className="py-2 pr-3 text-gray-500">{record.categoryName}</td>
-                              <td className="py-2 px-3">{record.indicatorName}</td>
-                              <td className="py-2 px-3 text-right tabular-nums">{record.value}</td>
-                              <td className="py-2 px-3">{record.unit || "-"}</td>
-                              <td className="py-2 px-3">{record.referenceRange || "-"}</td>
-                              <td
-                                className={cn(
-                                  "py-2 pl-3",
-                                  record.abnormal ? "text-red-700" : "text-gray-700",
-                                )}
-                              >
-                                {record.status || "未配置参考范围"}
-                              </td>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full border-collapse border-t-2 border-b-2 border-gray-900 text-sm">
+                          <thead className="border-b border-gray-900">
+                            <tr>
+                              <th className="py-2 pr-3 text-left font-medium whitespace-nowrap">日期</th>
+                              {table.indicators.map(ind => (
+                                <th key={ind.name} className="py-2 px-3 text-right font-medium whitespace-nowrap">
+                                  {ind.name}
+                                  {ind.referenceRange && <span className="text-xs text-gray-400 ml-1">({ind.referenceRange})</span>}
+                                  {ind.unit && <span className="block text-xs font-normal text-gray-400">{ind.unit}</span>}
+                                </th>
+                              ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+
+                          <tbody>
+                            {table.dates.map((date, rowIdx) => (
+                              <tr key={date}>
+                                <td className="py-2 pr-3 whitespace-nowrap">{date}</td>
+                                {table.rows[rowIdx].map((cell, colIdx) => (
+                                  <td
+                                    key={colIdx}
+                                    className={cn(
+                                      "py-2 px-3 text-right tabular-nums",
+                                      cell?.abnormal ? "text-red-700 font-medium" : "text-gray-700",
+                                    )}
+                                  >
+                                    {cell?.value ?? "-"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </section>
                   ))}
 

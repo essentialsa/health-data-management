@@ -4661,7 +4661,7 @@ export default function App() {
     }
   }
 
-  const actionTriggerClassName = "h-10 w-full px-4 justify-center whitespace-nowrap text-sm";
+  const actionTriggerClassName = "h-10 px-3 justify-center whitespace-nowrap text-sm shrink-0";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">
@@ -4691,7 +4691,7 @@ export default function App() {
             )}
           </div>
           
-          <div className="grid w-full grid-cols-2 items-center gap-3 pb-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="flex w-full flex-wrap items-center gap-2 pb-2">
               <AddRecordDialog
                 onAddRecord={handleAddRecord}
                 indicatorCategories={indicatorCategories}

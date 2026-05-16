@@ -8,7 +8,7 @@ import os
 import time
 from threading import Lock
 
-from parser.doc_engine import DocEngine, get_engine_status
+from parser.paddle_engine import PaddleEngine, get_ocr_status
 from parser.llm_structurer import get_llm_structuring_status
 
 app = FastAPI(title="Medical Report Parser", version="1.0.0")
@@ -17,7 +17,6 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger("medical-report-parser")
 
 # CORS - 默认允许本地开发 + 已部署前端域名。
-# 若需要允许任意来源可设置 ALLOWED_ORIGINS=*（此时会自动关闭 credentials）。
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -46,16 +45,16 @@ app.add_middleware(
 # 初始化引擎
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OCR_WARMUP_ON_STARTUP = os.getenv("OCR_WARMUP_ON_STARTUP", "false").lower() == "true"
-engine: Optional[DocEngine] = None
+engine: Optional[PaddleEngine] = None
 engine_lock = Lock()
 
 
-def get_engine() -> DocEngine:
+def get_engine() -> PaddleEngine:
     global engine
     if engine is None:
         with engine_lock:
             if engine is None:
-                engine = DocEngine(use_mock=USE_MOCK)
+                engine = PaddleEngine(use_mock=USE_MOCK)
     return engine
 
 
@@ -115,7 +114,7 @@ class ParseResponse(BaseModel):
 
 @app.get("/api/health")
 async def health_check():
-    ocr_status = get_engine_status(USE_MOCK)
+    ocr_status = get_ocr_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     ocr_ready = ocr_status["available"]
     if not ocr_ready:
@@ -142,7 +141,7 @@ async def health_check():
 @app.get("/api/healthz")
 async def service_health_check():
     """Render 健康检查只验证进程存活和 OCR 依赖可导入，不触发模型初始化。"""
-    ocr_status = get_engine_status(USE_MOCK)
+    ocr_status = get_ocr_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
@@ -166,7 +165,7 @@ async def service_health_check():
 @app.get("/api/ocr-readyz")
 async def ocr_ready_check():
     """手动深度检查：显式初始化 OCR 引擎，仅用于排障，不给 Render 健康检查调用。"""
-    ocr_status = get_engine_status(USE_MOCK)
+    ocr_status = get_ocr_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
@@ -214,22 +213,21 @@ async def parse_report(file: UploadFile = File(...)):
     filename = (file.filename or "").lower()
     content_type = (file.content_type or "").lower()
     allowed_ext = (".pdf", ".jpg", ".jpeg", ".png")
-    # 优先按 content-type 判断；若浏览器/客户端未正确传递，则退回扩展名兜底。
     if content_type not in allowed_types and not filename.endswith(allowed_ext):
         raise HTTPException(status_code=400, detail="不支持的文件类型")
-    
+
     content = await file.read()
-    
+
     if len(content) > 50 * 1024 * 1024:  # 50MB
         raise HTTPException(status_code=400, detail="文件大小超过 50MB 限制")
-    
+
     try:
         logger.info(
             "parse_start filename=%s content_type=%s size_bytes=%d engine=%s",
             file.filename or "unknown",
             content_type or "unknown",
             len(content),
-            get_engine_status(USE_MOCK)["engine"],
+            get_ocr_status(USE_MOCK)["engine"],
         )
         result = get_engine().parse_pdf(content, file.filename or "unknown")
         logger.info(

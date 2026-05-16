@@ -197,13 +197,12 @@ class PaddleEngine:
         return self._real_parse(file_content, filename)
 
     def _real_parse(self, file_content: bytes, filename: str) -> dict:
-        """真实 PaddleOCR 解析"""
+        """PaddleOCR 提取文本 → LLM 结构化提取指标"""
         if self.backend == "paddle" and not self._ocr:
             raise RuntimeError("PaddleOCR 未安装")
 
         try:
             tables: List[Dict[str, Any]] = []
-            indicators: List[Dict[str, Any]] = []
             markdown_sections: List[str] = []
             report_date: Optional[str] = None
             all_text_parts: List[str] = []
@@ -214,7 +213,6 @@ class PaddleEngine:
                 page_count = page_index + 1
                 page_result = self._parse_single_page(ocr_result, page_index)
                 tables.extend(page_result["tables"])
-                indicators.extend(page_result["indicators"])
                 if page_result["markdown"]:
                     markdown_sections.append(page_result["markdown"])
                 if not report_date and page_result["reportDate"]:
@@ -235,11 +233,13 @@ class PaddleEngine:
             if not report_date and all_text_parts:
                 report_date = self._extract_date(" ".join(all_text_parts))
 
+            # LLM 负责全部指标提取，PaddleOCR 只提供文本
+            indicators: List[Dict[str, Any]] = []
             llm_result = self._llm_structurer.structure_report(
                 page_count=page_count,
                 report_date_candidate=report_date,
                 page_contexts=page_contexts,
-                heuristic_indicators=indicators,
+                heuristic_indicators=[],
             )
             if llm_result:
                 llm_report_date = llm_result.get("reportDate")
@@ -249,7 +249,7 @@ class PaddleEngine:
                 if llm_indicators:
                     indicators = llm_indicators
                     logger.info(
-                        "ocr_llm_structuring_applied page_count=%s indicator_count=%s model=%s",
+                        "llm_structuring_applied page_count=%s indicator_count=%s model=%s",
                         page_count,
                         len(indicators),
                         self._llm_structurer.runtime_config.get("model"),
@@ -377,9 +377,9 @@ class PaddleEngine:
         return image.resize(target_size, resample)
 
     def _parse_single_page(self, ocr_result, page_index: int) -> Dict[str, Any]:
-        """格式化单页 OCR 输出为统一结构"""
+        """提取单页 OCR 文本和表格结构，不做指标正则提取（交给 LLM）"""
         if not ocr_result or not ocr_result[0]:
-            return {"tables": [], "indicators": [], "markdown": "", "reportDate": None, "allText": ""}
+            return {"tables": [], "markdown": "", "reportDate": None, "allText": ""}
 
         # 收集所有 OCR 文本块
         text_blocks: List[Dict[str, Any]] = []
@@ -402,11 +402,10 @@ class PaddleEngine:
 
         text_blocks.sort(key=lambda b: (b["center_y"], b["center_x"]))
 
-        # 检测表格结构
+        # 检测表格结构（用于生成 Markdown，不做指标提取）
         table_structure = self._detect_table_structure(text_blocks)
 
         tables = []
-        indicators = []
         markdown_lines = []
 
         if table_structure and table_structure["num_rows"] >= 2:
@@ -414,14 +413,7 @@ class PaddleEngine:
                 "pageIndex": page_index,
                 "cells": table_structure["cells"]
             })
-
-            # ★ 核心修复：按列位置提取指标（不再依赖单个 block 包含完整信息）
-            indicators = self._extract_indicators_from_table(table_structure, page_index)
             markdown_lines = self._generate_table_markdown(table_structure)
-
-        # 如果没有找到表格，尝试从文本块直接提取指标
-        if not indicators:
-            indicators = self._extract_indicators_from_text_blocks(text_blocks, page_index)
 
         # 提取日期
         all_text = " ".join([b["text"] for b in text_blocks])
@@ -430,7 +422,6 @@ class PaddleEngine:
         return {
             "reportDate": report_date,
             "tables": tables,
-            "indicators": indicators,
             "markdown": "\n".join(markdown_lines) if markdown_lines else "",
             "allText": all_text,
         }

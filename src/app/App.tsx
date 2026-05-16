@@ -4661,7 +4661,7 @@ export default function App() {
     }
   }
 
-  const actionTriggerClassName = "h-10 px-3 justify-center whitespace-nowrap text-sm shrink-0";
+  const actionTriggerClassName = "h-10 px-2 justify-center whitespace-nowrap text-sm flex-1 min-w-0";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-pink-50 p-4 md:p-8">

@@ -4,6 +4,7 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
+ENV JAVA_TOOL_OPTIONS="-Xmx256m"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends default-jre-headless \

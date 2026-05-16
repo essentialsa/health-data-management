@@ -6,6 +6,7 @@ import gc
 import io
 import logging
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -83,60 +84,66 @@ def _image_to_pdf_bytes(image_bytes: bytes) -> bytes:
 
 def _extract_with_odl(pdf_bytes: bytes) -> Dict[str, Any]:
     """用 OpenDataLoader PDF 提取 PDF 内容"""
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = tmp.name
+    input_tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    input_tmp.write(pdf_bytes)
+    input_tmp.close()
+    output_dir = tempfile.mkdtemp(prefix="odl_out_")
 
     try:
-        markdown_parts: List[str] = []
-        all_text_parts: List[str] = []
-        page_count = 0
-
-        result = opendataloader_pdf.convert(
-            input_path=tmp_path,
-            output_dir=None,
+        opendataloader_pdf.convert(
+            input_path=input_tmp.name,
+            output_dir=output_dir,
             format="markdown",
         )
 
-        # OpenDataLoader 返回的结果可能是文件路径列表或直接内容
-        if isinstance(result, str):
-            markdown_parts.append(result)
-            all_text_parts.append(result)
-            page_count = 1
-        elif isinstance(result, list):
-            for item in result:
-                if isinstance(item, dict):
-                    content = item.get("content") or item.get("markdown") or item.get("text") or ""
-                    page_count = max(page_count, item.get("page", 0) + 1)
-                elif isinstance(item, str):
-                    # 可能是输出文件路径，尝试读取
-                    if os.path.isfile(item):
-                        content = Path(item).read_text(encoding="utf-8", errors="replace")
-                        page_count += 1
-                    else:
-                        content = item
-                        page_count += 1
-                else:
-                    content = str(item)
-                    page_count += 1
+        # 读取输出目录中的 .md 文件
+        markdown_parts: List[str] = []
+        md_files = sorted(Path(output_dir).rglob("*.md"))
+        if md_files:
+            for md_file in md_files:
+                content = md_file.read_text(encoding="utf-8", errors="replace")
                 if content.strip():
                     markdown_parts.append(content)
-                    all_text_parts.append(content)
-        else:
-            content = str(result)
-            markdown_parts.append(content)
-            all_text_parts.append(content)
-            page_count = 1
+
+        # 如果没有 .md 文件，尝试读取其他文本文件
+        if not markdown_parts:
+            for ext in ("*.txt", "*.html", "*.json"):
+                for f in sorted(Path(output_dir).rglob(ext)):
+                    content = f.read_text(encoding="utf-8", errors="replace")
+                    if content.strip():
+                        markdown_parts.append(content)
+                        break
+                if markdown_parts:
+                    break
+
+        # 最后兜底：读取输出目录下所有文件
+        if not markdown_parts:
+            for f in sorted(Path(output_dir).iterdir()):
+                if f.is_file():
+                    try:
+                        content = f.read_text(encoding="utf-8", errors="replace")
+                        if content.strip():
+                            markdown_parts.append(content)
+                    except Exception:
+                        continue
+
+        all_text = "\n\n".join(markdown_parts)
+        if not all_text.strip():
+            raise RuntimeError("OpenDataLoader PDF 未提取到任何文本内容")
 
         return {
-            "page_count": max(1, page_count),
-            "markdown": "\n\n".join(markdown_parts),
-            "all_text": "\n".join(all_text_parts),
+            "page_count": max(1, len(markdown_parts)),
+            "markdown": all_text,
+            "all_text": all_text,
         }
     finally:
         try:
-            os.unlink(tmp_path)
+            os.unlink(input_tmp.name)
         except OSError:
+            pass
+        try:
+            shutil.rmtree(output_dir, ignore_errors=True)
+        except Exception:
             pass
 
 

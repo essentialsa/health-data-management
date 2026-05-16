@@ -279,7 +279,7 @@ function LoginPage({ onLogin, onSignUp, onResetPassword, onOAuthLogin, errorMess
               </div>
               <div>
                 <CardTitle className="text-2xl bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
-                  体检数据管理
+                  个人健康中心
                 </CardTitle>
                 <CardDescription className="text-gray-600">登录后安全访问您的健康数据</CardDescription>
               </div>
@@ -4675,7 +4675,7 @@ export default function App() {
               </div>
               <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
-                  体检数据管理
+                  个人健康中心
                 </h1>
                 <p className="text-gray-600 mt-2">智能记录，轻松管理您的健康数据</p>
               </div>

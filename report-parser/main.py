@@ -8,10 +8,8 @@ import os
 import time
 from threading import Lock
 
-from parser.paddle_engine import PaddleEngine, get_ocr_status
+from parser.doc_engine import DocEngine, get_engine_status
 from parser.llm_structurer import get_llm_structuring_status
-from parser.table_extractor import extract_table_structure
-from parser.date_extractor import extract_report_date
 
 app = FastAPI(title="Medical Report Parser", version="1.0.0")
 
@@ -45,19 +43,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 初始化引擎（默认使用真实 PaddleOCR）
+# 初始化引擎
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OCR_WARMUP_ON_STARTUP = os.getenv("OCR_WARMUP_ON_STARTUP", "false").lower() == "true"
-engine: Optional[PaddleEngine] = None
+engine: Optional[DocEngine] = None
 engine_lock = Lock()
 
 
-def get_engine() -> PaddleEngine:
+def get_engine() -> DocEngine:
     global engine
     if engine is None:
         with engine_lock:
             if engine is None:
-                engine = PaddleEngine(use_mock=USE_MOCK)
+                engine = DocEngine(use_mock=USE_MOCK)
     return engine
 
 
@@ -65,23 +63,23 @@ def get_engine() -> PaddleEngine:
 async def warmup_ocr_engine():
     """按需预热 OCR；线上默认关闭，避免健康检查阶段触发重型初始化。"""
     if USE_MOCK:
-        logger.info("ocr_engine_warmup_skip mock_mode=true")
+        logger.info("engine_warmup_skip mock_mode=true")
         return
     if not OCR_WARMUP_ON_STARTUP:
-        logger.info("ocr_engine_warmup_skip startup_warmup=false")
+        logger.info("engine_warmup_skip startup_warmup=false")
         return
 
     try:
         warmup_started_at = time.perf_counter()
         loaded_engine = get_engine()
         logger.info(
-            "ocr_engine_warmup_done engine=%s elapsed_sec=%.2f config=%s",
+            "engine_warmup_done engine=%s elapsed_sec=%.2f config=%s",
             loaded_engine.backend,
             time.perf_counter() - warmup_started_at,
             loaded_engine.runtime_config,
         )
     except Exception as exc:
-        logger.exception("ocr_engine_warmup_failed: %s", exc)
+        logger.exception("engine_warmup_failed: %s", exc)
         raise
 
 
@@ -117,14 +115,14 @@ class ParseResponse(BaseModel):
 
 @app.get("/api/health")
 async def health_check():
-    ocr_status = get_ocr_status(USE_MOCK)
+    ocr_status = get_engine_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     ocr_ready = ocr_status["available"]
     if not ocr_ready:
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "OCR 引擎未就绪：请检查 OCR_ENGINE 和系统依赖",
+                "message": "文档提取引擎未就绪：请检查依赖",
                 "engine": ocr_status["engine"],
                 "import_error": ocr_status["error"],
             },
@@ -144,13 +142,13 @@ async def health_check():
 @app.get("/api/healthz")
 async def service_health_check():
     """Render 健康检查只验证进程存活和 OCR 依赖可导入，不触发模型初始化。"""
-    ocr_status = get_ocr_status(USE_MOCK)
+    ocr_status = get_engine_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "OCR 引擎依赖不可用",
+                "message": "文档提取引擎依赖不可用",
                 "engine": ocr_status["engine"],
                 "import_error": ocr_status["error"],
             },
@@ -168,13 +166,13 @@ async def service_health_check():
 @app.get("/api/ocr-readyz")
 async def ocr_ready_check():
     """手动深度检查：显式初始化 OCR 引擎，仅用于排障，不给 Render 健康检查调用。"""
-    ocr_status = get_ocr_status(USE_MOCK)
+    ocr_status = get_engine_status(USE_MOCK)
     llm_status = get_llm_structuring_status()
     if not ocr_status["available"]:
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "OCR 引擎依赖不可用",
+                "message": "文档提取引擎依赖不可用",
                 "engine": ocr_status["engine"],
                 "import_error": ocr_status["error"],
             },
@@ -186,7 +184,7 @@ async def ocr_ready_check():
         raise HTTPException(
             status_code=503,
             detail={
-                "message": "OCR 引擎初始化失败",
+                "message": "文档提取引擎初始化失败",
                 "engine": ocr_status["engine"],
                 "error": str(exc),
             },
@@ -227,15 +225,15 @@ async def parse_report(file: UploadFile = File(...)):
     
     try:
         logger.info(
-            "ocr_parse_start filename=%s content_type=%s size_bytes=%d engine=%s",
+            "parse_start filename=%s content_type=%s size_bytes=%d engine=%s",
             file.filename or "unknown",
             content_type or "unknown",
             len(content),
-            get_ocr_status(USE_MOCK)["engine"],
+            get_engine_status(USE_MOCK)["engine"],
         )
         result = get_engine().parse_pdf(content, file.filename or "unknown")
         logger.info(
-            "ocr_parse_done filename=%s success=%s elapsed_sec=%.2f page_count=%s indicator_count=%s",
+            "parse_done filename=%s success=%s elapsed_sec=%.2f page_count=%s indicator_count=%s",
             file.filename or "unknown",
             result.get("success"),
             time.perf_counter() - started_at,
@@ -245,7 +243,7 @@ async def parse_report(file: UploadFile = File(...)):
         return result
     except Exception as e:
         logger.exception(
-            "ocr_parse_exception filename=%s elapsed_sec=%.2f",
+            "parse_exception filename=%s elapsed_sec=%.2f",
             file.filename or "unknown",
             time.perf_counter() - started_at,
         )

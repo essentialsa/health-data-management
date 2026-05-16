@@ -15,34 +15,6 @@ services:
     envVars:
       - key: USE_MOCK
         value: "false"
-      - key: OCR_WARMUP_ON_STARTUP
-        value: "false"
-      - key: OCR_ENGINE
-        value: paddle
-      - key: PADDLE_IR_OPTIM
-        value: "false"
-      - key: PADDLE_ENABLE_MKLDNN
-        value: "false"
-      - key: PADDLE_CPU_THREADS
-        value: "1"
-      - key: PADDLE_USE_ANGLE_CLS
-        value: "false"
-      - key: PADDLE_OCR_VERSION
-        value: PP-OCRv2
-      - key: PADDLE_REC_ALGORITHM
-        value: CRNN
-      - key: PADDLE_REC_IMAGE_SHAPE
-        value: 3,32,320
-      - key: PADDLE_DET_LIMIT_SIDE_LEN
-        value: "736"
-      - key: PADDLE_REC_BATCH_NUM
-        value: "1"
-      - key: PADDLE_CLS_BATCH_NUM
-        value: "1"
-      - key: OCR_MAX_IMAGE_SIDE
-        value: "960"
-      - key: OCR_PDF_RENDER_SCALE
-        value: "1.0"
       - key: OCR_LLM_ENABLED
         value: "true"
       - key: OCR_LLM_BASE_URL

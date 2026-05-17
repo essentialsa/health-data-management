@@ -4691,7 +4691,7 @@ export default function App() {
             )}
           </div>
           
-          <div className="flex w-full flex-wrap items-center gap-2 pb-2">
+          <div className="grid w-full gap-2 pb-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
               <AddRecordDialog
                 onAddRecord={handleAddRecord}
                 indicatorCategories={indicatorCategories}
